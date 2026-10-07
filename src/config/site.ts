@@ -5,13 +5,14 @@
  * so canonical links, the sitemap and social images get absolute URLs on deploy.
  */
 export const SITE = {
-  name: "PDF Text Editor",
+  name: "KillMyPDF",
   /** Used where space is tight (PWA name, tab titles). */
-  shortName: "PDF Text Editor",
+  shortName: "KillMyPDF",
   tagline: "Edit the text in any PDF. Keep the original look.",
   description:
-    "Free online PDF text editor. Click any line in a digital PDF, change the words, and download a real PDF with the original fonts, layout and selectable text — no sign-up, nothing to install, processed in your browser.",
+    "KillMyPDF is a free online PDF text editor. Click any line in a digital PDF, change the words, and download a real PDF with the original fonts, layout and selectable text — no sign-up, nothing to install, processed in your browser.",
   keywords: [
+    "KillMyPDF",
     "PDF editor",
     "edit PDF text",
     "online PDF editor",
@@ -25,6 +26,6 @@ export const SITE = {
   ],
   url: (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, ""),
   /** Public repository, shown in the footer when set (e.g. "https://github.com/you/repo"). */
-  repoUrl: process.env.NEXT_PUBLIC_REPO_URL || "",
+  repoUrl: process.env.NEXT_PUBLIC_REPO_URL || "https://github.com/mohitphoenix24/Kill-My-PDF",
   themeColor: "#09090b",
 } as const;

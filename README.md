@@ -2,7 +2,7 @@
 
 <img src="src/app/icon.svg" width="84" height="84" alt="" />
 
-# PDF Text Editor
+# KillMyPDF
 
 **Edit the text in any PDF — and keep the original look.**
 
@@ -32,7 +32,7 @@ Most "free online PDF editors" don't edit your text at all. They paint a **white
 
 This editor changes the PDF itself.
 
-| | Typical online editor | **PDF Text Editor** |
+| | Typical online editor | **KillMyPDF** |
 |---|:---:|:---:|
 | Old text actually removed from the file | ❌ hidden under a box | ✅ |
 | Keeps the document's own font, size and colour | ⚠️ approximated | ✅ reuses the original font |
@@ -69,8 +69,8 @@ This editor changes the PDF itself.
 Requires **Node.js 20.9+**.
 
 ```bash
-git clone <your-fork-url> pdf-text-editor
-cd pdf-text-editor
+git clone https://github.com/mohitphoenix24/Kill-My-PDF.git
+cd Kill-My-PDF
 npm install
 npm run dev
 ```
@@ -135,7 +135,7 @@ The text editor is the first tool in a growing, privacy-friendly PDF toolkit.
 - [ ] Re-use fonts embedded as full programs for even more edits in the original typeface
 - [ ] Offline support (PWA)
 
-Have an idea? [Open an issue](../../issues).
+Have an idea? [Open an issue](https://github.com/mohitphoenix24/Kill-My-PDF/issues).
 
 ## 🧱 Tech stack
 
@@ -176,9 +176,9 @@ docs/                      # Architecture notes and screenshots
 
 The app is a fully static site. There are no servers, functions or databases.
 
-1. Push this repository to GitHub.
-2. In Netlify, choose **Add new site → Import an existing project** and pick the repository.
-3. The settings are read from [`netlify.toml`](netlify.toml): build command `npm run build`, publish directory `out`, Node 22.
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/mohitphoenix24/Kill-My-PDF)
+
+Or manually: in Netlify choose **Add new site → Import an existing project** and pick your fork. The settings are read from [`netlify.toml`](netlify.toml): build command `npm run build`, publish directory `out`, Node 22.
 
 Canonical URLs, the sitemap and social preview images automatically use your Netlify URL.
 
