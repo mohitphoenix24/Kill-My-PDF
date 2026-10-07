@@ -1,0 +1,13 @@
+# The app is a fully static Next.js export: PDF parsing, editing and export
+# all run in the browser, so no Netlify Functions are required.
+[build]
+  command = "npm run build"
+  publish = "out"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[headers]]
+  for = "/pdfjs/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
