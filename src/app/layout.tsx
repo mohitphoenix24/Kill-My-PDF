@@ -1,17 +1,38 @@
 import type { Metadata, Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
-import { APP_NAME } from "@/components/ui/Logo";
+import { SITE } from "@/config/site";
 import "./globals.css";
 
+const title = `${SITE.name} — Edit PDF text online, free & keep the original fonts`;
+
 export const metadata: Metadata = {
-  title: `${APP_NAME} — Edit text in PDFs, privately`,
-  description:
-    "Edit the text in digital PDFs right in your browser. Original fonts and layout are preserved, the result stays real, selectable text, and your files never leave your device.",
-  applicationName: APP_NAME,
+  metadataBase: new URL(SITE.url),
+  title: { default: title, template: `%s · ${SITE.name}` },
+  description: SITE.description,
+  applicationName: SITE.name,
+  keywords: [...SITE.keywords],
+  category: "productivity",
+  alternates: { canonical: "/" },
+  robots: { index: true, follow: true, googleBot: { index: true, follow: true, "max-image-preview": "large" } },
+  // opengraph-image.png / twitter-image.png in this folder are picked up automatically.
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: SITE.name,
+    title,
+    description: SITE.description,
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description: SITE.description,
+  },
+  formatDetection: { telephone: false, email: false, address: false },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#09090b",
+  themeColor: SITE.themeColor,
   colorScheme: "dark",
   width: "device-width",
   initialScale: 1,

@@ -5,7 +5,7 @@ import { FileUp, TriangleAlert } from "lucide-react";
 import { Landing } from "@/components/landing/Landing";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
-import { Toaster, useToasts } from "@/components/ui/Toaster";
+import type { Toast } from "@/components/ui/Toaster";
 import { useMediaQuery } from "@/components/ui/useMediaQuery";
 import { PdfViewer, type ScrollRequest } from "@/components/viewer/PdfViewer";
 import type { Tool } from "@/components/viewer/PageView";
@@ -33,6 +33,14 @@ const EDITOR_HISTORY_STATE = { view: "editor" };
 
 type PendingAction = { kind: "open"; file: File } | { kind: "home" };
 
+interface Props {
+  /** The file chosen on the start screen; the workspace opens it on mount. */
+  file: File;
+  toast: (toast: Omit<Toast, "id">) => void;
+  /** Leave the workspace (back to the start screen), optionally with an error to show there. */
+  onExit: (error?: string) => void;
+}
+
 function isTypingTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
@@ -41,9 +49,12 @@ function isTypingTarget(target: EventTarget | null): boolean {
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const MOD_KEY = isMac ? "⌘" : "Ctrl+";
 
-export default function Editor() {
+/**
+ * The editor for one open PDF. Loaded lazily (it pulls in pdf.js and pdf-lib) the
+ * first time a file is opened; the start screen is rendered by App.
+ */
+export default function Workspace({ file, toast, onExit }: Props) {
   const { state, open, close, ensureAnalyzed } = useDocument();
-  const { toasts, show: toast, dismiss } = useToasts();
   const wide = useMediaQuery(WIDE_SCREEN);
   const [history, setHistory] = useState<EditHistory>(EMPTY_HISTORY);
   const [savedHistory, setSavedHistory] = useState<EditHistory>(EMPTY_HISTORY);
@@ -77,6 +88,20 @@ export default function Editor() {
   const dirty = editCount > 0 && (savedHistory.ops !== history.ops || savedHistory.cursor !== history.cursor);
   const selected = model && selectedId ? (findTextElement(model, selectedId) ?? null) : null;
 
+  useEffect(() => {
+    let cancelled = false;
+    void readFileBytes(file).then((bytes) => {
+      if (!cancelled) void open(file.name, bytes);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [file, open]);
+
+  useEffect(() => {
+    if (state.status === "error") onExit(state.message);
+  }, [state, onExit]);
+
   // ---- Opening, closing, navigation -----------------------------------------
   const resetEditorState = useCallback(() => {
     setHistory(EMPTY_HISTORY);
@@ -98,13 +123,13 @@ export default function Editor() {
 
   const ignoreNextPop = useRef(false);
   const goHome = useCallback(() => {
-    resetEditorState();
     close();
     if ((window.history.state as typeof EDITOR_HISTORY_STATE | null)?.view === "editor") {
       ignoreNextPop.current = true;
       window.history.back();
     }
-  }, [close, resetEditorState]);
+    onExit();
+  }, [close, onExit]);
 
   const requestOpen = useCallback(
     (file: File) => {
@@ -138,8 +163,8 @@ export default function Editor() {
       hasDoc: !!session,
       dirty,
       goHomeFromBack: () => {
-        resetEditorState();
         close();
+        onExit();
       },
     };
   });
@@ -380,7 +405,6 @@ export default function Editor() {
       ? `You have ${editCount} change${editCount === 1 ? "" : "s"} that haven't been downloaded. Opening ${pending.file.name} will discard them.`
       : `You have ${editCount} change${editCount === 1 ? "" : "s"} that haven't been downloaded. Leaving will discard them.`;
 
-  // The toaster, dialogs and file input stay mounted across start screen ⇄ editor.
   return (
     <>
       <input
@@ -397,12 +421,7 @@ export default function Editor() {
       />
 
       {!session || !model ? (
-        <Landing
-          loadingFile={state.status === "loading" ? state.fileName : undefined}
-          error={state.status === "error" ? state.message : undefined}
-          dragging={dragging}
-          onOpen={() => fileInput.current?.click()}
-        />
+        <Landing loadingFile={file.name} dragging={false} onOpen={() => {}} />
       ) : (
         <div className="flex h-dvh flex-col bg-zinc-950">
           <TopBar
@@ -552,7 +571,6 @@ export default function Editor() {
         }
       />
       <ShortcutsDialog open={shortcutsOpen} modKey={MOD_KEY} onClose={() => setShortcutsOpen(false)} />
-      <Toaster toasts={toasts} onDismiss={dismiss} />
     </>
   );
 }

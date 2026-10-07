@@ -1,163 +1,217 @@
+<div align="center">
+
+<img src="src/app/icon.svg" width="84" height="84" alt="" />
+
 # PDF Text Editor
 
-Edit the native text of digital PDFs in the browser and export a real PDF. The output is not an image: edited text stays selectable and searchable, and everything else on the page is left as it was.
+**Edit the text in any PDF — and keep the original look.**
 
-Open a PDF, double-click "Mohit Sharma", type "Rohit Sharma", and click **Download**. The downloaded file contains the text "Rohit Sharma" in the original Helvetica, at the original position. "Mohit Sharma" is removed from the file, not hidden under a white box.
+Click a line, type your change, download a real PDF. Same fonts, same layout, and every word still selectable and searchable.<br/>
+Free, no sign-up, and it all runs in your browser.
 
-Only native (digital) PDFs are supported. Scanned or image-only PDFs are detected and rejected with a clear message. There is no OCR and no AI.
+[![Next.js](https://img.shields.io/badge/Next.js-16-000?logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![pdf.js](https://img.shields.io/badge/pdf.js-5.6-e34f26?logo=mozilla&logoColor=white)](https://mozilla.github.io/pdf.js/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-38bdf8?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![Netlify ready](https://img.shields.io/badge/Netlify-ready-00c7b7?logo=netlify&logoColor=white)](#-deploy-to-netlify)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6)](#-contributing)
 
-## Running locally
+[Features](#-features) · [Why it's different](#-why-its-different) · [Quick start](#-quick-start) · [How it works](#-how-it-works) · [Roadmap](#-roadmap)
+
+<br/>
+
+<img src="docs/screenshots/inline-editing.png" alt="Editing the client name on an invoice directly on the page, with the inspector showing the original font is preserved" width="100%" />
+
+</div>
+
+<br/>
+
+## ✨ Why it's different
+
+Most "free online PDF editors" don't edit your text at all. They paint a **white box over the old words** and stamp new text on top. The original is still in the file: copy, search or a screen reader will find it, and the new text rarely matches the font.
+
+This editor changes the PDF itself.
+
+| | Typical online editor | **PDF Text Editor** |
+|---|:---:|:---:|
+| Old text actually removed from the file | ❌ hidden under a box | ✅ |
+| Keeps the document's own font, size and colour | ⚠️ approximated | ✅ reuses the original font |
+| Result is real, selectable, searchable text | ⚠️ often flattened | ✅ |
+| Rest of the page left byte-for-byte untouched | ❌ | ✅ verified by pixel tests |
+| Upload, account or watermark | usually | **none** — runs in your browser |
+
+## 🚀 Features
+
+- **Click-to-edit text.** Every line of a digital PDF is detected with its font, size, weight, colour, position and rotation. Double-click to type directly on the page.
+- **Original fonts, preserved.** When the original font can draw your new text, the change is written *in place*, so position, spacing and styling stay exactly as they were. If an embedded font subset is missing a character, a matching font (serif, sans or mono, same weight) is used, and the app tells you so.
+- **Move, resize, recolour.** Drag text, nudge it with the arrow keys, change its size or colour from the floating toolbar.
+- **Live, honest preview.** The page you see is the exported PDF, re-rendered after every edit. What you see is what you download.
+- **Undo / redo** for every change, plus a change list with one-click revert.
+- **Works with real-world PDFs.** Handles kerning (`TJ`), rotated text and rotated pages, crop boxes, character and word spacing, and CMYK colours. Text inside reusable form objects is clearly marked read-only rather than broken.
+- **Safe by design.** Scanned, password-protected, encrypted and corrupted files are detected with clear messages. The uploaded file is never modified, and every export starts again from the original.
+- **Mobile friendly.** Tap to select, edit with the floating toolbar, fine-tune in a bottom sheet.
+- **Keyboard shortcuts** for everything (press <kbd>?</kbd>).
+
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td width="66%"><img src="docs/screenshots/landing.png" alt="Start screen with a central drop zone" /></td>
+    <td width="34%" rowspan="2"><img src="docs/screenshots/mobile-editor.png" alt="Editor on a phone, with text selected and the floating toolbar visible" /></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/editor.png" alt="Editor with text selected and the floating toolbar" /></td>
+  </tr>
+</table>
+
+## ⚡ Quick start
+
+Requires **Node.js 20.9+**.
 
 ```bash
+git clone <your-fork-url> pdf-text-editor
+cd pdf-text-editor
 npm install
-npm run dev          # http://localhost:3000 (copies pdf.js assets into public/ first)
-npm test             # unit + integration tests (Vitest, Node)
-npm run build        # static export into out/
-npm run test:e2e     # browser test against out/ (needs a Playwright Chromium)
-npm run fixtures     # regenerate tests/fixtures
+npm run dev
 ```
 
-To try the employee example, open `tests/fixtures/employee-info.pdf`.
+Open <http://localhost:3000> and drop in any digital PDF. To try it straight away, use [`tests/fixtures/showcase-invoice.pdf`](tests/fixtures/showcase-invoice.pdf).
 
-### Using the editor
+| Command | What it does |
+|---|---|
+| `npm run dev` | Start the dev server (copies pdf.js assets into `public/` first) |
+| `npm run build` | Static production build into `out/` |
+| `npm test` | Unit, analysis and export round-trip tests (Vitest) |
+| `npm run test:e2e` | Drives the production build in Chromium, desktop and mobile |
+| `npm run lint` / `npm run typecheck` | ESLint and strict TypeScript |
+| `npm run capture` | Regenerates README screenshots and social images from the real app |
 
-- **Click** text to select it. A floating toolbar offers edit, size, colour, revert and remove.
-- **Double-click** text (or press Enter) to type directly on the page. Enter keeps the change and Esc cancels it.
-- **Drag** text to move it, or nudge it with the arrow keys (hold Shift for bigger steps).
-- The right-hand **inspector** shows the font, size, colour and position, and says whether the edit keeps the original font. With nothing selected, it lists every change, each with a revert button.
-- **Download** exports the PDF. You're warned before closing the tab or opening another file with changes you haven't downloaded.
-- Press **?** to see all keyboard shortcuts.
+## 🧠 How it works
 
-## Deploying to Netlify (not done yet)
+```mermaid
+flowchart LR
+    A[PDF file] --> B[pdf.js<br/>glyphs, widths, fonts]
+    A --> C[Content-stream parser<br/>exact byte ranges]
+    B --> D{Glyph-by-glyph<br/>cross-check}
+    C --> D
+    D --> E[Document model<br/>lines, fonts, styles]
+    E --> F[Edit operations<br/>setText · move · setStyle]
+    F --> G[Exporter]
+    A --> G
+    G --> H[New PDF<br/>real, selectable text]
+```
 
-The app is a static Next.js export (`output: "export"`). Everything runs in the browser, so there are no Netlify Functions, no server state and no storage. `netlify.toml` already sets `npm run build` as the build command and `out/` as the publish directory. Uploaded files never leave the browser.
+1. **Analyse.** The PDF's content streams are parsed with a purpose-built tokenizer that remembers the exact bytes behind every piece of text. pdf.js supplies glyph widths and unicode. The two are cross-checked character by character, so the editor never touches bytes it hasn't positively identified.
+2. **Edit.** Every change is a small, serialisable operation (`setText`, `move`, `setStyle`, `reset`). Undo and redo are a cursor over that list, and the original file is never modified.
+3. **Export.** For each edit the exporter picks the most faithful strategy:
+   - **in place:** rewrite the string in the original font;
+   - **redraw:** remove the old glyphs without shifting their neighbours, then draw the text again in the original or a matching font;
+   - **remove.**
 
-## Architecture
+   The old text is deleted from the file, and the result is verified by re-opening it.
+
+Full details, including design decisions and known limitations, are in [**docs/ARCHITECTURE.md**](docs/ARCHITECTURE.md).
+
+## 🧪 Quality
+
+- **51 unit and integration tests:** geometry checked against pdf.js for every page rotation, the content parser, font analysis, and export round-trips.
+- **Pixel-diff tests:** after an edit, zero pixels may change outside the edited text.
+- **Independent verification:** exported files are re-read by both pdf.js and Poppler's `pdftotext`.
+- **End-to-end browser tests** against the production build: editing, undo/redo, download, errors, navigation and mobile.
+- **Measured performance:** a 300-page, 15,000-line PDF opens in ~170 ms, and an edit exports in ~110 ms.
+
+## 🗺️ Roadmap
+
+The text editor is the first tool in a growing, privacy-friendly PDF toolkit.
+
+- [x] Edit text in digital PDFs, keeping the original fonts
+- [x] Move, resize and recolour text
+- [x] Mobile support
+- [ ] **Merge PDFs:** combine files in any order
+- [ ] **Images to PDF:** turn multiple photos or scans into one PDF
+- [ ] **Delete, reorder and rotate pages**
+- [ ] Split PDFs and extract pages
+- [ ] Add new text boxes and signatures
+- [ ] Re-use fonts embedded as full programs for even more edits in the original typeface
+- [ ] Offline support (PWA)
+
+Have an idea? [Open an issue](../../issues).
+
+## 🧱 Tech stack
+
+| | |
+|---|---|
+| **App** | Next.js 16 (static export), React 19, TypeScript (strict) |
+| **UI** | Tailwind CSS 4, Lucide icons, Geist |
+| **PDF reading & rendering** | [pdf.js](https://github.com/mozilla/pdf.js) |
+| **PDF writing** | [pdf-lib](https://github.com/Hopding/pdf-lib) + fontkit, plus a custom content-stream parser and interpreter |
+| **Testing** | Vitest, Playwright, Poppler |
+| **Hosting** | Any static host; configured for Netlify |
+
+<details>
+<summary><b>Project structure</b></summary>
 
 ```text
-PDF bytes (immutable)
-   ├─ pdf.js  ── rendering, glyph widths and unicode, font metrics
-   └─ pdf-lib ── raw content streams and font dictionaries
-          │
-          ▼
-   Analysis (src/lib/pdf/analysis)     interpreter → runs → line elements
-          │
-          ▼
-   Document model (src/lib/model)      pages, text elements, fonts — plain data
-          │
-          ▼
-   Edit operations (src/lib/editor)    setText / move / setStyle / reset + undo history
-          │
-          ▼
-   Exporter (src/lib/pdf/export)       original bytes + edited model → new PDF
+src/
+├─ app/                    # Next.js app: layout, SEO metadata, robots, sitemap, manifest
+├─ components/
+│  ├─ App.tsx              # Start screen ⇄ editor workspace
+│  ├─ landing/             # Start screen and copy
+│  ├─ editor/              # Workspace, top bar, inspector, thumbnails, dock
+│  ├─ viewer/              # Page canvas, text layer, overlays, inline editor, toolbar
+│  └─ ui/                  # Buttons, dialogs, toasts
+├─ config/site.ts          # Product name, SEO text, URLs
+└─ lib/
+   ├─ geometry/            # Matrices and PDF ⇄ screen coordinates
+   ├─ model/               # Document model types
+   ├─ editor/              # Edit operations and undo history
+   └─ pdf/                 # Parser, analysis, fonts, session, exporter
+tests/                     # Vitest suites, fixtures, Playwright E2E
+docs/                      # Architecture notes and screenshots
 ```
 
-| Path | Responsibility |
-|---|---|
-| `src/lib/geometry/` | Matrices and **all** PDF⇄screen conversion (`pdfToScreenCoordinates`, `pdfRectToScreenRect`, …). Tested against pdf.js's own viewport for every rotation, crop box and zoom level. |
-| `src/lib/pdf/content/parser.ts` | Content-stream tokenizer and parser that records the byte range of every operand. |
-| `src/lib/pdf/analysis/interpreter.ts` | Tracks graphics and text state (CTM, Tm, Tc, Tw, Tz, Ts, Tr, colour, forms) and emits positioned text runs. |
-| `src/lib/pdf/analysis/grouping.ts` | Joins runs into line elements, splitting at large gaps. |
-| `src/lib/pdf/fonts/` | Reads font dictionaries, encodes text with an existing font, and chooses substitutes. |
-| `src/lib/pdf/session.ts` | Opens a file, analyses pages lazily, handles errors and detects scanned pages. |
-| `src/lib/editor/` | Serialisable edit operations, applied purely, and undo/redo as a cursor over the operation log. |
-| `src/lib/pdf/export/` | The exporter, plus a verifier that re-opens the output with pdf.js. |
-| `src/components/` | React UI: landing page, top bar, page thumbnails, viewer (canvas, text layer, SVG overlay, inline editor, floating toolbar), inspector, dock, and shared UI pieces in `ui/`. |
+</details>
 
-### How text is matched to the PDF bytes
+## 🚢 Deploy to Netlify
 
-pdf.js knows glyph widths and unicode, but it doesn't say which bytes in the file drew which text. The analyser runs its own content-stream interpreter and walks pdf.js's operator list alongside it. Each text operator is checked against pdf.js glyph by glyph, using character codes. If anything disagrees, the page falls back to read-only text taken from pdf.js's text layer. The exporter never edits bytes it couldn't positively identify.
+The app is a fully static site. There are no servers, functions or databases.
 
-### Original stays untouched; edits are operations
+1. Push this repository to GitHub.
+2. In Netlify, choose **Add new site → Import an existing project** and pick the repository.
+3. The settings are read from [`netlify.toml`](netlify.toml): build command `npm run build`, publish directory `out`, Node 22.
 
-The uploaded bytes are never modified. The edited document is always `analysedModel + operations`, and every export starts again from the original bytes. Undo and redo just move a cursor over the operation list.
+Canonical URLs, the sitemap and social preview images automatically use your Netlify URL.
 
-## Decisions
+## ⚠️ Limitations
 
-### Export strategy, from most to least faithful
+- **Digital PDFs only.** Scanned documents are images of text and would need OCR; they are detected and reported.
+- **Substitute fonts.** When an embedded font subset lacks a character you type, a similar font is used, and the app tells you which.
+- **Read-only text.** Text inside reusable form objects, vertical text and invisible OCR layers are shown read-only.
+- **Encrypted files.** Password-protected PDFs aren't supported. Encrypted PDFs that open without a password are view-only.
+- **Digital signatures.** Editing a signed PDF invalidates its signature, as with any editor.
 
-1. **In place.** The string operand inside the original `Tj`/`TJ`/`'`/`"` is rewritten in the original font. Position, clipping, transparency, z-order and tagging are all untouched. Used when only the text changed and the font can draw every new character.
-2. **Redraw with the original font.** Used for moves, size changes and colour changes. The original operator is *neutralised*: it is replaced by a `TJ` kerning value of exactly the same width, so text that continues after it on the same line doesn't shift. The text is then drawn again with the same font resource.
-3. **Redraw with a substitute font.** Used when the original font can't draw the new text, for example an embedded subset that lacks the glyph "8".
-4. **Removed.** Used when the text is cleared.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#known-limitations) for the complete list.
 
-The content stream that was replaced is deleted from the file, so the old text doesn't remain anywhere in it. The pixel test confirms nothing outside the edited text changes.
+## 🤝 Contributing
 
-### Width changes
+Issues and pull requests are welcome. Before opening a PR:
 
-The font size is kept and the text is allowed to get wider or narrower. Shrinking the font to fit the original box would quietly change how the document looks. Text that continues on the same line after an in-place edit reflows by the width difference, as it would in a word processor. Text placed with its own positioning operator doesn't move. The properties panel shows the new width.
-
-### Fonts
-
-A character is written with the original font only when it is **known** to exist:
-- the glyph was seen elsewhere in the document, which proves it is in the font file even for a subset, or
-- the font is a non-embedded standard font with `WinAnsiEncoding`, where the PDF viewer supplies the glyphs.
-
-Otherwise a substitute is chosen and **always reported** in the UI:
-1. bundled DejaVu, if the original font *is* DejaVu;
-2. a standard 14 font of the same class (serif, sans or mono, with matching bold and italic), if the text fits WinAnsi;
-3. bundled DejaVu Sans, Serif or Mono, embedded as a subset. This covers ₹ and most Unicode.
-
-Helvetica is never assumed to equal Arial except as this reported fallback.
-
-### Values the PDF doesn't expose
-
-These are left `undefined`, never guessed:
-- **Alignment.** PDFs store positioned glyphs, not alignment.
-- **Colour in Pattern, Separation, DeviceN or Lab colour spaces.**
-
-Bold and italic come from the font descriptor flags where available. Otherwise they are read from the font name, for example `Arial-BoldMT`. The model records which source was used (`styleSource`).
-
-## Known limitations
-
-- **Read-only text:**
-  - text inside Form XObjects (editing it would change every page that reuses the form);
-  - vertical (CJK) text;
-  - fonts with non-Identity multi-byte CMaps (codes can't be verified);
-  - invisible text (`Tr 3`, usually an OCR layer).
-- **Type 3 fonts** can't be reused for new text, so edits are always drawn with a substitute.
-- **Substitute fonts change appearance.** The substitute is the same class and weight as the original, but not the same typeface.
-- **Redrawn text is placed on top.** A moved, recoloured or substituted element is drawn in a new content block after the original content. It ignores any clipping path the original was under, and it is untagged.
-- **Lost on edit:** kerning inside an edited `TJ` segment, any "ActualText" on the edited text, and digital signatures (pdf-lib rewrites the whole file).
-- **Not supported:**
-  - password-protected PDFs, which are rejected;
-  - encrypted PDFs that open without a password, which are view-only (pdf-lib can't re-encrypt);
-  - PDFs over 150 MB.
-- **CMYK colours** are converted to RGB with a simple formula, not an ICC profile.
-
-## Performance
-
-Measured on a 300-page, 15,000-line PDF in Node:
-
-| Step | Time |
-|---|---|
-| Open | 170 ms |
-| Analyse one page | ~3 ms |
-| Analyse all 300 pages | under 1 s |
-| Export with one edit | ~110 ms |
-
-Pages render and are analysed lazily as they scroll into view, and the rest are analysed in the background. pdf.js already parses in its own worker. If very large files cause UI stutter, the next step is to move `exportPdf` into a Web Worker. It is pure and only needs the bytes and the model.
-
-## Adding an AI layer later
-
-The AI layer only needs to produce `EditOperation` JSON. It doesn't need to know anything about PDF internals:
-
-```json
-{ "type": "setText", "elementId": "p1-t2", "text": "Rohit Sharma" }
+```bash
+npm run lint && npm run typecheck && npm test
+npm run build && npm run test:e2e   # needs: npx playwright-core install chromium
 ```
 
-```text
-"Change the employee name to Rohit Sharma"
-   → LLM, given the document model's text elements (id, content, bbox, style)
-   → EditOperation[]
-   → applyOperations(model, ops)        // same path as the UI, same undo history
-   → exportPdf(originalBytes, model)
-```
+New PDF edge cases are best added as a small generated fixture in [`scripts/generate-fixtures.mjs`](scripts/generate-fixtures.mjs) with a round-trip test.
 
-## Testing
+## 🙏 Acknowledgements
 
-- `npm test` runs:
-  - **Unit tests:** geometry against pdf.js, the content parser, and edit history.
-  - **Analysis tests:** fonts, sizes, colours and positions, checked against pdf.js on every text item.
-  - **Export round-trip tests:** each export is re-opened and re-analysed, with an independent `pdftotext` check and a pixel diff that requires zero changed pixels outside the edited text.
-- `npm run test:e2e` drives the production build in Chromium. It covers hover, select, editing, undo/redo, save and download, verification of the downloaded file, the text layer, zoom, every error case, and page navigation.
+- [pdf.js](https://github.com/mozilla/pdf.js) by Mozilla, for parsing and rendering
+- [pdf-lib](https://github.com/Hopding/pdf-lib), for writing PDFs
+- [DejaVu fonts](https://dejavu-fonts.github.io/), the bundled fallback fonts (Bitstream Vera licence, see [`public/fonts/dejavu/LICENSE.txt`](public/fonts/dejavu/LICENSE.txt))
+
+<div align="center">
+<br/>
+
+**If this saved you a PDF subscription, a ⭐ helps others find it.**
+
+</div>

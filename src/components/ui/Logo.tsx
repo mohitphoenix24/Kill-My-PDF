@@ -1,3 +1,5 @@
+import { SITE } from "@/config/site";
+
 export function LogoMark({ className = "size-8" }: { className?: string }) {
   return (
     <svg viewBox="0 0 64 64" className={className} aria-hidden>
@@ -17,5 +19,5 @@ export function LogoMark({ className = "size-8" }: { className?: string }) {
   );
 }
 
-/** Product name shown in the UI and page title — change it here. */
-export const APP_NAME = "PDF Text Editor";
+/** Product name shown in the UI — configured in src/config/site.ts. */
+export const APP_NAME = SITE.name;

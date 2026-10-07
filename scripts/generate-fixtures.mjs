@@ -63,6 +63,70 @@ async function employeeInfo() {
   return save(doc, join(fixtures, "employee-info.pdf"));
 }
 
+// 1b. A fictional, presentable invoice used for README screenshots and social images.
+async function showcaseInvoice() {
+  const doc = await PDFDocument.create();
+  doc.setTitle("Invoice INV-2048");
+  const page = doc.addPage([595, 842]);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const regular = await doc.embedFont(StandardFonts.Helvetica);
+  const ink = rgb(0.11, 0.12, 0.16);
+  const muted = rgb(0.45, 0.47, 0.53);
+  const accent = rgb(0.31, 0.27, 0.9);
+  const line = rgb(0.88, 0.89, 0.92);
+
+  page.drawRectangle({ x: 0, y: 792, width: 595, height: 50, color: accent });
+  page.drawText("Northwind Studio", { x: 56, y: 811, size: 16, font: bold, color: rgb(1, 1, 1) });
+  page.drawText("hello@northwind.example", { x: 400, y: 812, size: 10, font: regular, color: rgb(0.88, 0.88, 1) });
+
+  page.drawText("Invoice", { x: 56, y: 730, size: 30, font: bold, color: ink });
+  page.drawText("INV-2048", { x: 56, y: 708, size: 12, font: regular, color: muted });
+
+  const meta = [
+    ["Issued", "12 March 2026"],
+    ["Due", "11 April 2026"],
+  ];
+  meta.forEach(([k, v], i) => {
+    page.drawText(k, { x: 380, y: 732 - i * 20, size: 10, font: regular, color: muted });
+    page.drawText(v, { x: 440, y: 732 - i * 20, size: 10, font: bold, color: ink });
+  });
+
+  page.drawText("Billed to", { x: 56, y: 650, size: 10, font: regular, color: muted });
+  page.drawText("Acme Corporation", { x: 56, y: 632, size: 13, font: bold, color: ink });
+  page.drawText("221 Market Street, Springfield", { x: 56, y: 615, size: 10, font: regular, color: muted });
+
+  const rows = [
+    ["Brand identity refresh", "1", "$2,400.00"],
+    ["Website design — 6 pages", "1", "$3,150.00"],
+    ["Illustration set", "12", "$960.00"],
+  ];
+  let y = 560;
+  page.drawText("Description", { x: 56, y, size: 10, font: bold, color: muted });
+  page.drawText("Qty", { x: 380, y, size: 10, font: bold, color: muted });
+  page.drawText("Amount", { x: 470, y, size: 10, font: bold, color: muted });
+  page.drawLine({ start: { x: 56, y: y - 10 }, end: { x: 539, y: y - 10 }, thickness: 1, color: line });
+  for (const [desc, qty, amount] of rows) {
+    y -= 34;
+    page.drawText(desc, { x: 56, y, size: 11, font: regular, color: ink });
+    page.drawText(qty, { x: 380, y, size: 11, font: regular, color: ink });
+    page.drawText(amount, { x: 470, y, size: 11, font: regular, color: ink });
+    page.drawLine({ start: { x: 56, y: y - 14 }, end: { x: 539, y: y - 14 }, thickness: 0.5, color: line });
+  }
+  y -= 46;
+  page.drawText("Total due", { x: 380, y, size: 12, font: bold, color: ink });
+  page.drawText("$6,510.00", { x: 470, y, size: 14, font: bold, color: accent });
+
+  page.drawText("Thank you for your business!", { x: 56, y: 120, size: 12, font: bold, color: ink });
+  page.drawText("Payment by bank transfer within 30 days. All names and amounts are fictitious.", {
+    x: 56,
+    y: 102,
+    size: 9,
+    font: regular,
+    color: muted,
+  });
+  return save(doc, join(fixtures, "showcase-invoice.pdf"));
+}
+
 // 2. Operator coverage: TJ kerning and gaps, ' and ", spacing, scaling, rotation, CMYK, rise.
 //    Tc/Tw/Tz/colour are deliberately never reset: text state is part of the graphics
 //    state and persists across BT/ET, so later lines inherit it (and render spaced/wide).
@@ -167,6 +231,7 @@ async function multipage() {
 }
 
 await employeeInfo();
+await showcaseInvoice();
 await textFeatures();
 await rotatedPage();
 await formXObject();
