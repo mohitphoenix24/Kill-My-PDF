@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { EditSession } from "@/components/editor/editSession";
 import type { EditOperation } from "@/lib/editor/operations";
 import type { DocumentModel } from "@/lib/model/types";
 import type { PDFDocumentProxy } from "@/lib/pdf/pdfjs/pdfjs";
@@ -25,15 +26,20 @@ interface Props {
   scale: number;
   tool: Tool;
   selectedId: string | null;
-  editingId: string | null;
+  session: EditSession | null;
   editOnPage: boolean;
   anchor: TapAnchor | null;
+  showEdits: boolean;
   widths: ReadonlyMap<string, number>;
   scrollRequest: ScrollRequest | null;
   onSelect: (id: string | null, fraction?: number) => void;
   onMove: (id: string, dx: number, dy: number) => void;
   onEdit: (op: EditOperation) => void;
   onEditRequest: (id: string, fraction?: number) => void;
+  onEditLine: (id: string) => void;
+  onTyped: (text: string) => void;
+  onCancelEditing: () => void;
+  onStep: (direction: 1 | -1) => void;
   onZoomTo: (scale: number) => void;
   onStopEditing: () => void;
   onShowDetails: () => void;
@@ -188,7 +194,7 @@ export function PdfViewer(props: Props) {
   }, []);
 
   // While typing on a touch screen, bring the line being edited near the top, clear of the keyboard.
-  const typingElementId = !props.editOnPage ? props.editingId : null;
+  const typingElementId = !props.editOnPage ? (props.session?.id ?? null) : null;
   useEffect(() => {
     if (!typingElementId) return;
     const reveal = () =>
@@ -237,15 +243,20 @@ export function PdfViewer(props: Props) {
               tool={props.tool}
               visible={visible.has(page.pageNumber)}
               selectedId={onThisPage(props.selectedId)}
-              editingId={onThisPage(props.editingId)}
+              session={props.session && onThisPage(props.session.id) ? props.session : null}
               editOnPage={props.editOnPage}
               anchor={props.anchor && onThisPage(props.anchor.id) ? props.anchor : null}
+              showEdits={props.showEdits}
               widths={props.widths}
               onSelect={props.onSelect}
               onMove={props.onMove}
               onEdit={props.onEdit}
               onEditRequest={props.onEditRequest}
+              onEditLine={props.onEditLine}
+              onTyped={props.onTyped}
               onStopEditing={props.onStopEditing}
+              onCancelEditing={props.onCancelEditing}
+              onStep={props.onStep}
               onShowDetails={props.onShowDetails}
             />
           );

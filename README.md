@@ -60,6 +60,8 @@ KillMyPDF changes the PDF itself.
 
 A PDF stores text as lines, but you want to change a *word*. Double-click (or tap twice on a phone) and **only the word you pointed at is selected**: type to replace it and leave the rest of the line alone.
 
+This works on PDFs saved from Chrome ("Print to PDF") too, where each letter is drawn separately and there are no space characters: lines are read back as proper lines, edits stay in the document's own font, and if one word needs a letter the font doesn't contain, only that word changes font.
+
 ## 📱 Built for phones too
 
 The touch experience was designed on its own rather than squeezed down from desktop:
@@ -222,7 +224,7 @@ Canonical URLs, the sitemap and the social preview images automatically use your
 ## ⚠️ Limitations
 
 - **Text editing is for digital PDFs only.** Scanned documents are images of text and would need OCR; they are detected and reported.
-- **Substitute fonts.** When an embedded font subset lacks a character you type, a similar font is used, and the app tells you which.
+- **Substitute fonts.** When an embedded font subset lacks a character you type, a similar font is used for the word that needs it (the rest of the line keeps its font), and the app tells you which.
 - **Read-only text.** Text inside reusable form objects, vertical text and invisible OCR layers are shown read-only.
 - **Merging and organizing don't carry over** bookmarks or fillable form fields. Pages, text, images and fonts come across intact.
 - **Password-protected PDFs aren't supported.** Encrypted PDFs that open without a password can be viewed but not edited.

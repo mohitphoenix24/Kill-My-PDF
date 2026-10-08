@@ -1,7 +1,7 @@
 // Desktop: the text editor, end to end, against the production build (what Netlify serves).
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { downloadFrom, launch, openFile, pdfTexts, pointOn, step, textBox } from "./helpers.mjs";
+import { downloadFrom, fx, launch, openFile, pdfTexts, pointOn, step, textBox } from "./helpers.mjs";
 
 const app = await launch();
 const { page, base, shot } = app;
@@ -17,16 +17,17 @@ try {
   await page.getByRole("button", { name: "Drop your PDF here" }).waitFor();
   await shot("e01-edit-landing");
 
-  step("open a PDF; hover highlights the line");
+  step("open a PDF; hover highlights one word, not the line");
   await openFile(page, "employee-info.pdf");
   await textBox(page, "Mohit Sharma");
   await shot("e02-loaded");
   const mid = await pointOn(page, "Mohit Sharma", 0.5);
   await page.mouse.move(mid.x, mid.y);
-  await page.waitForFunction(() => {
-    const p = [...document.querySelectorAll("polygon")].find((x) => x.textContent?.startsWith("Mohit Sharma"));
-    return p?.getAttribute("fill") === "rgba(198, 241, 53, 0.32)";
-  });
+  const hover = page.getByTestId("hover-word");
+  await hover.waitFor();
+  const hoverBox = await hover.boundingBox();
+  const lineBox = await textBox(page, "Mohit Sharma");
+  assert.ok(hoverBox.width < lineBox.width * 0.7, "the highlight covers a word, not the whole line");
 
   step("click selects: floating toolbar and inspector");
   await page.mouse.click(mid.x, mid.y);
@@ -40,12 +41,13 @@ try {
   step("double-click a WORD: only that word is selected for typing");
   const left = await pointOn(page, "Mohit Sharma", 0.12); // over "Mohit"
   await page.mouse.dblclick(left.x, left.y);
-  const inline = page.getByLabel("Edit text inline");
+  const inline = page.getByLabel("Edit word inline");
   await inline.waitFor();
+  assert.equal(await inline.inputValue(), "Mohit", "the field holds just the tapped word, not the line");
   const [selStart, selEnd] = await inline.evaluate((el) => [el.selectionStart, el.selectionEnd]);
-  assert.equal("Mohit Sharma".slice(selStart, selEnd), "Mohit", "the tapped word is selected, not the whole line");
+  assert.equal([selStart, selEnd].join(), "0,5", "the word is selected for typing");
   await page.keyboard.type("Rohit");
-  assert.equal(await inline.inputValue(), "Rohit Sharma");
+  assert.equal(await inline.inputValue(), "Rohit");
   await shot("e04-inline-editing");
   await inline.press("Enter");
   await idle();
@@ -55,8 +57,8 @@ try {
   step("double-click the other word");
   const right = await pointOn(page, "Rohit Sharma", 0.85); // over "Sharma"
   await page.mouse.dblclick(right.x, right.y);
-  const [s2, e2] = await inline.evaluate((el) => [el.selectionStart, el.selectionEnd]);
-  assert.equal("Rohit Sharma".slice(s2, e2), "Sharma");
+  await inline.waitFor();
+  assert.equal(await inline.inputValue(), "Sharma");
   await inline.press("Escape"); // cancel: nothing changes
   assert.ok(await textBox(page, "Rohit Sharma"));
 
@@ -164,6 +166,39 @@ try {
   await page.getByRole("button", { name: "Go to page 2" }).click();
   await page.waitForTimeout(500);
   assert.ok(await (await page.locator("polygon", { has: page.locator('title:text-is("Page 2 heading")') })).isVisible());
+
+  step("a Chrome-printed form: edit one word of a long paragraph, fonts and look untouched");
+  await page.goto(`${base}/edit-pdf/`);
+  await openFile(page, "chrome-form.pdf");
+  const paragraph = page.locator("polygon[data-hit-target]", { has: page.locator('title:has-text("Customer Handbook and that")') });
+  await paragraph.waitFor({ timeout: 20000 });
+  const lineText = await paragraph.locator("title").textContent();
+  assert.ok(lineText.length > 80, "the whole printed line is one element");
+  assert.equal(await page.locator('[stroke-dasharray]').count(), 0, "no dashed outlines are drawn over the page by default");
+  const pb = await paragraph.boundingBox();
+  const at = lineText.indexOf("details") + 3;
+  await page.mouse.dblclick(pb.x + pb.width * (at / lineText.length), pb.y + pb.height / 2);
+  const wordField = page.getByLabel("Edit word inline");
+  await wordField.waitFor();
+  const picked = await wordField.inputValue();
+  assert.match(picked, /^\S{2,20}$/, `a single word was picked, not the line (got "${picked}")`);
+  await page.keyboard.type("request");
+  await wordField.press("Enter");
+  await idle();
+  await page.waitForTimeout(500);
+  assert.ok((await panel.innerText()).includes("Original font preserved"), "edited in the file's own font");
+  const chrome = await downloadFrom(page, () => page.getByRole("button", { name: "Download" }).click(), "chrome-form-edited.pdf");
+  const chromeText = (await pdfTexts(chrome.bytes)).join(" ").replace(/\s+/g, " ");
+  assert.ok(chromeText.includes(lineText.replace(picked, "request").replace(/\s+/g, " ").slice(0, 60)), "only that word changed");
+  try {
+    const before = execFileSync("pdffonts", [fx("chrome-form.pdf")], { encoding: "utf8" }).split("\n").slice(2).map((l) => l.split(/\s+/)[0]).filter(Boolean);
+    const after = execFileSync("pdffonts", [chrome.path], { encoding: "utf8" }).split("\n").slice(2).map((l) => l.split(/\s+/)[0]).filter(Boolean);
+    assert.deepEqual(after, before, "no font was added or swapped");
+    console.log("  pdffonts: same fonts before and after");
+  } catch (e) {
+    if (e.code !== "ENOENT") throw e;
+  }
+  await shot("e12-chrome-form");
 
   step("keyboard shortcuts dialog");
   await page.keyboard.press("?");

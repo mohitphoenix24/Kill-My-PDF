@@ -205,6 +205,12 @@ export interface FontInfo {
    * These glyphs are known to exist in the font program, even for subsets.
    */
   glyphs: Record<string, { code: number; width: number }>;
+  /**
+   * How wide the gap between words is, in ems, measured from the document itself. Needed because
+   * many generators (Chrome's "Print to PDF", most browsers and some report tools) never write a
+   * space glyph: words are just positioned apart, so the font has no space to reuse.
+   */
+  spaceWidth?: number;
 }
 
 export function isTextElement(e: PDFElement): e is TextElement {

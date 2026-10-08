@@ -60,3 +60,34 @@ export function toUtf16Range(text: string, start: number, end: number): [number,
   const offset = (n: number) => chars.slice(0, n).join("").length;
   return [offset(start), offset(end)];
 }
+
+/** Every word of the text with its position along the line, in order. */
+export function wordSpans(text: string, boundaries: readonly number[]): WordSpan[] {
+  const chars = Array.from(text);
+  if (chars.length === 0 || boundaries.length !== chars.length + 1) return [];
+  const total = boundaries[chars.length];
+  if (!(total > 0)) return [];
+  const isSpace = (i: number) => /\s/.test(chars[i]);
+  const spans: WordSpan[] = [];
+  for (let i = 0; i < chars.length; ) {
+    if (isSpace(i)) {
+      i++;
+      continue;
+    }
+    let end = i;
+    while (end < chars.length && !isSpace(end)) end++;
+    spans.push({ start: i, end, from: boundaries[i] / total, to: boundaries[end] / total });
+    i = end;
+  }
+  return spans;
+}
+
+/** Replaces code points [start, end) of `text` with `replacement`. */
+export function replaceRange(text: string, start: number, end: number, replacement: string): string {
+  const chars = Array.from(text);
+  return chars.slice(0, start).join("") + replacement + chars.slice(end).join("");
+}
+
+export function sliceRange(text: string, start: number, end: number): string {
+  return Array.from(text).slice(start, end).join("");
+}

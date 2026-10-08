@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeft, ChevronRight, CircleCheck, Maximize2, Minus, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleCheck, Eye, EyeOff, Maximize2, Minus, Plus } from "lucide-react";
 import { IconButton, Spinner } from "@/components/ui/Button";
 
 interface Props {
@@ -16,6 +16,10 @@ interface Props {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFitWidth: () => void;
+  /** Outline the text you've edited (an editor-only aid — it is never saved in the PDF). */
+  showEdits: boolean;
+  canShowEdits: boolean;
+  onToggleEdits: () => void;
 }
 
 /** Floating control dock at the bottom of the canvas: pages, zoom and sync status. */
@@ -66,6 +70,11 @@ export function ViewerDock(p: Props) {
         <IconButton label="Fit width" tooltipSide="top" onClick={p.onFitWidth} active={p.fitWidth}>
           <Maximize2 className="size-3.5" />
         </IconButton>
+        {p.canShowEdits && (
+          <IconButton label={p.showEdits ? "Hide outlines (never saved in the PDF)" : "Outline edited text (editor only)"} tooltipSide="top" onClick={p.onToggleEdits} active={p.showEdits}>
+            {p.showEdits ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+          </IconButton>
+        )}
         {(busy || p.previewStatus === "ready") && (
           <>
             <div className="mx-1 h-5 w-px bg-white/10" />

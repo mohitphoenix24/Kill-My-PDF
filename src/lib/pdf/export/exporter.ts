@@ -30,12 +30,18 @@ import {
   hexStringToken,
   parseContentStream,
 } from "@/lib/pdf/content/parser";
-import { type EncodedText, encodeWithFont } from "@/lib/pdf/fonts/encoding";
+import { DEFAULT_SPACE_EM, type EncodedText, encodeWithFont, singleCodeString } from "@/lib/pdf/fonts/encoding";
 import { type SubstituteFont, chooseSubstituteFont } from "@/lib/pdf/fonts/substitute";
 import { readPageContent } from "@/lib/pdf/pdflib/objects";
 import { PdfUserError } from "@/lib/pdf/errors";
 
-export type ExportStrategy = "in-place" | "redraw-original" | "redraw-substitute" | "removed";
+/**
+ * - in-place: the original operator is rewritten, so nothing around it moves.
+ * - redraw-original: drawn again in the original font (moved, resized or recoloured).
+ * - redraw-mixed: words the original font can draw stay in it; only words with a missing glyph use another font.
+ * - redraw-substitute: the whole line is drawn in another font.
+ */
+export type ExportStrategy = "in-place" | "redraw-original" | "redraw-mixed" | "redraw-substitute" | "removed";
 
 export interface ElementExportReport {
   elementId: string;
@@ -174,7 +180,7 @@ async function exportElement(
   if (ownFontUsable && !changes.geometry && !changes.color) {
     const value = (encoded as { ok: true; value: EncodedText }).value;
     const [first, ...rest] = element.source.runs;
-    edits.push({ start: first.start, end: first.end, bytes: asciiBytes(hexStringToken(value.bytes)) });
+    edits.push(rewriteRun(first, operations, value));
     for (const run of rest) edits.push({ start: run.start, end: run.end, bytes: asciiBytes("<>") });
     return { ...base, strategy: "in-place", fontName: font!.displayName, width: widthOf(value, ts), notes };
   }
@@ -197,10 +203,13 @@ async function exportElement(
     const value = (encoded as { ok: true; value: EncodedText }).value;
     const resource = PDFName.of(element.source.fontResource).toString();
     appended.push(
-      `q BT ${colorOps}${renderOp} ${resource} 1 Tf ${fmt(tc)} Tc ${fmt(tw)} Tw ${tm} Tm ${hexStringToken(value.bytes)} Tj ET Q`,
+      `q BT ${colorOps}${renderOp} ${resource} 1 Tf ${fmt(tc)} Tc ${fmt(tw)} Tw ${tm} Tm ${showOperator(value)} ET Q`,
     );
     return { ...base, strategy: "redraw-original", fontName: font!.displayName, width: widthOf(value, ts), notes };
   }
+
+  const mixed = font && !ownFontUsable ? await redrawMixed(element, font, { colorOps, renderOp, tc, tw, tm }, appended, ctx) : undefined;
+  if (mixed) return { ...base, ...mixed };
 
   const substitute = chooseSubstituteFont(font, element.style, element.content);
   const pdfFont = await embedSubstitute(substitute, ctx);
@@ -220,6 +229,126 @@ async function exportElement(
       : `The original font is unavailable, so ${substitute.name} was used.`,
   );
   return { ...base, strategy: "redraw-substitute", fontName: substitute.name, width, notes };
+}
+
+interface RedrawStyle {
+  colorOps: string;
+  renderOp: string;
+  tc: number;
+  tw: number;
+  tm: string;
+}
+
+/**
+ * Draws a line whose font lacks a few glyphs without changing the font of the rest. Each word the
+ * original font can draw keeps it; a word needing a missing glyph (e.g. a capital the subset never
+ * included) is drawn in a substitute. Runs of the same kind are drawn together and placed one after the
+ * other along the line, so the result reads as one line. Returns undefined when it can't help
+ * (a single word, or no word the original font can draw) and the caller substitutes the whole line.
+ */
+async function redrawMixed(
+  element: TextElement,
+  font: FontInfo,
+  style: RedrawStyle,
+  appended: string[],
+  ctx: ExportContext,
+): Promise<Omit<ElementExportReport, "elementId" | "pageNumber"> | undefined> {
+  if (font.subtype === "Type3" || font.codeBytes === undefined || font.vertical) return undefined;
+  const words = element.content.split(" ");
+  if (words.length < 2) return undefined;
+  const ts = element.source.textState;
+
+  const kinds = words.map((w) => (w === "" ? "orig" : encodeWithFont(font, w).ok ? "orig" : "sub"));
+  if (!kinds.includes("orig") || !kinds.includes("sub")) return undefined;
+
+  // Merge neighbouring words of the same kind into segments; spaces inside a segment stay inside it.
+  const segments: Array<{ kind: "orig" | "sub"; text: string }> = [];
+  words.forEach((word, i) => {
+    const last = segments[segments.length - 1];
+    if (last && last.kind === kinds[i]) last.text += ` ${word}`;
+    else segments.push({ kind: kinds[i] as "orig" | "sub", text: word });
+  });
+
+  const substitute = chooseSubstituteFont(font, element.style, segments.filter((s) => s.kind === "sub").map((s) => s.text).join(" "));
+  const pdfFont = await embedSubstitute(substitute, ctx);
+  const subKey = ctx.page.node.newFontDictionary(substitute.name, pdfFont.ref).toString();
+  const origKey = PDFName.of(element.source.fontResource).toString();
+  const gap = (font.glyphs[" "]?.width ?? font.spaceWidth ?? DEFAULT_SPACE_EM) + style.tc + style.tw;
+
+  const [a, b] = element.matrix;
+  let x = 0; // ems along the baseline, from the line's start
+  const missing = new Set<string>();
+  segments.forEach((segment, i) => {
+    if (i > 0) x += gap;
+    const tm = element.matrix.map((v, k) => fmt(k === 4 ? v + x * a : k === 5 ? v + x * b : v)).join(" ");
+    if (segment.kind === "orig") {
+      const encoded = encodeWithFont(font, segment.text);
+      if (!encoded.ok) throw new Error("A word that was drawable became undrawable while placing a line.");
+      appended.push(
+        `q BT ${style.colorOps}${style.renderOp} ${origKey} 1 Tf ${fmt(style.tc)} Tc ${fmt(style.tw)} Tw ${tm} Tm ${showOperator(encoded.value)} ET Q`,
+      );
+      x += widthOf(encoded.value, ts);
+      return;
+    }
+    const chars = Array.from(segment.text);
+    const spaces = substitute.kind === "standard" ? chars.filter((c) => c === " ").length : 0;
+    appended.push(
+      `q BT ${style.colorOps}${style.renderOp} ${subKey} 1 Tf ${fmt(style.tc)} Tc ${fmt(substitute.kind === "standard" ? style.tw : 0)} Tw ${tm} Tm ${pdfFont.encodeText(segment.text).toString()} Tj ET Q`,
+    );
+    x += pdfFont.widthOfTextAtSize(segment.text, 1) + chars.length * style.tc + spaces * style.tw;
+    for (const word of segment.text.split(" ")) {
+      const result = encodeWithFont(font, word);
+      if (!result.ok) missing.add(word);
+    }
+  });
+
+  return {
+    strategy: "redraw-mixed",
+    fontName: `${font.displayName} + ${substitute.name}`,
+    width: x,
+    notes: [
+      `"${font.displayName}" can't draw ${[...missing].map((w) => `"${w}"`).join(", ")}${font.subset ? " (it is embedded as a subset)" : ""}, so ${substitute.name} was used for ${missing.size === 1 ? "that word" : "those words"} only.`,
+    ],
+  };
+}
+
+/** "<48656C6C6F> Tj", or a TJ array when the text includes gaps for spaces the font can't draw. */
+function showOperator(value: EncodedText): string {
+  const plain = singleCodeString(value);
+  if (plain) return `${hexStringToken(plain)} Tj`;
+  return `${tjArray(value)} TJ`;
+}
+
+/** `[<hex> -278 <hex>]`: a gap of `em` is a TJ number of -em × 1000 (negative moves right). */
+function tjArray(value: EncodedText): string {
+  return `[${tjItems(value)}]`;
+}
+
+function tjItems(value: EncodedText): string {
+  return value.parts.map((p) => (p.kind === "codes" ? hexStringToken(p.bytes) : fmt(-p.em * 1000))).join(" ");
+}
+
+/**
+ * Rewrites the first show-text operator of an element to show the new text, keeping the
+ * operator's side effects (the next-line move of ' and ", and their spacing parameters).
+ */
+function rewriteRun(run: TextRun, operations: ContentOperation[], value: EncodedText): ByteEdit {
+  const plain = singleCodeString(value);
+  // No gaps: swap just the string, leaving the operator and everything around it untouched.
+  if (plain && run.operator !== "TJ") return { start: run.start, end: run.end, bytes: asciiBytes(hexStringToken(plain)) };
+  if (run.operator === "TJ") return { start: run.start, end: run.end, bytes: asciiBytes(plain ? hexStringToken(plain) : tjItems(value)) };
+  const array = `${tjArray(value)} TJ`;
+  switch (run.operator) {
+    case "Tj":
+      return { start: run.opStart, end: run.opEnd, bytes: asciiBytes(array) };
+    case "'":
+      return { start: run.opStart, end: run.opEnd, bytes: asciiBytes(`T* ${array}`) };
+    default: {
+      const [aw, ac] = operations[run.opIndex].operands;
+      const num = (o: typeof aw) => (o?.kind === "number" ? fmt(o.value) : "0");
+      return { start: run.opStart, end: run.opEnd, bytes: asciiBytes(`${num(aw)} Tw ${num(ac)} Tc T* ${array}`) };
+    }
+  }
 }
 
 function widthOf(value: EncodedText, ts: TextElement["source"]["textState"]): number {

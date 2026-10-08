@@ -318,4 +318,28 @@ try {
   console.warn("Skipped image fixtures (Poppler's pdftoppm not available):", error.message);
 }
 
+// 10. A Chrome-printed form (Skia/PDF): subset TrueType fonts, one glyph per text operator, and — importantly —
+//     no space glyphs at all (words are just positioned apart). Needs a Playwright Chromium.
+try {
+  const { chromium } = await import("playwright-core");
+  const html = `<!doctype html><html><head><style>
+    @page { size: A4; margin: 12mm }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 9.2pt; line-height: 1.25; color: #000 }
+    h2 { font-size: 15pt; margin: 6mm 0 2mm } p { margin: 0 0 1mm }
+  </style></head><body>
+  <h2>Service Request</h2>
+  <div>Northwind Studio<br>12 Harbour Road<br>Springfield 40001<br>support@northwind.example</div>
+  <div style="margin-top:36mm">
+  <p>I confirm that I have read the Customer Handbook and that the details I filled in on this Service Request Form are accurate. I agree to follow the studio rules as described in the Customer Handbook. I confirm that the information provided by me is correct. I also confirm that I am not submitting more than one Request Form for myself.</p>
+  <p>If any of the information provided by me is found to be incorrect later, I understand that my request may be cancelled, before, during, or after the work, including the time after delivery of my final files. Further, I understand that I may be liable for the costs of any work already completed. The studio's decision will be final and binding on me.</p>
+  <p><b>e-Signature :</b> Alex Morgan</p></div></body></html>`;
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 700, height: 900 } });
+  await page.setContent(html);
+  writeFileSync(join(fixtures, "chrome-form.pdf"), await page.pdf({ format: "A4", printBackground: true, width: "170mm" }));
+  await browser.close();
+} catch (error) {
+  console.warn("Skipped chrome-form.pdf (needs Playwright's Chromium):", error.message);
+}
+
 console.log(`Fixtures written to ${fixtures}`);

@@ -56,3 +56,23 @@ describe("wordAtFraction", () => {
     expect(toUtf16Range("abc", 0, 3)).toEqual([0, 3]);
   });
 });
+
+import { replaceRange, sliceRange, wordSpans } from "@/lib/text/words";
+
+describe("wordSpans / replaceRange", () => {
+  it("lists every word with its position", () => {
+    const text = "Information  Brochure.";
+    const boundaries = Array.from({ length: Array.from(text).length + 1 }, (_, i) => i * 10);
+    const spans = wordSpans(text, boundaries);
+    expect(spans.map((s) => text.slice(s.start, s.end))).toEqual(["Information", "Brochure."]);
+    expect(spans[1].from).toBeCloseTo(13 / 22, 6);
+    expect(spans[1].to).toBe(1);
+  });
+
+  it("swaps just one word", () => {
+    const text = "have read the Information Brochure and filled";
+    expect(replaceRange(text, 14, 25, "Guide")).toBe("have read the Guide Brochure and filled");
+    expect(sliceRange(text, 14, 25)).toBe("Information");
+    expect(replaceRange("a😀b", 1, 2, "X")).toBe("aXb");
+  });
+});

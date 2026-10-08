@@ -499,7 +499,10 @@ class Interpreter {
         advance += (widthEm * fontSize + ts.charSpacing + (glyph.isSpace ? ts.wordSpacing : 0)) * th;
         current.codes.push(glyph.originalCharCode);
         current.text += glyph.unicode ?? "";
-        if (font && (glyph.isInFont || props?.missingFile) && glyph.unicode && [...glyph.unicode].length === 1) {
+        // A space the document itself shows is safe to show again even when pdf.js sees no outline for it
+        // (generators routinely subset it to an empty glyph); it also gives the font its real space width.
+        const shownSpace = glyph.unicode === " ";
+        if (font && (glyph.isInFont || props?.missingFile || shownSpace) && glyph.unicode && [...glyph.unicode].length === 1) {
           font.glyphs[glyph.unicode] ??= { code: glyph.originalCharCode, width: widthEm };
         }
       }

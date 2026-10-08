@@ -17,6 +17,8 @@ import type { Capability, FontInfo, TextElement, TextStyle } from "@/lib/model/t
 import type { PdfjsFontProps } from "@/lib/pdf/pdfjs/operatorGlyphs";
 import { type RawTextRun, RUN_SPLIT_GAP_EM, SPACE_GAP_EM } from "./interpreter";
 
+/** Most a glyph may overlap the previous glyph's advance and still be the same line. */
+const MAX_KERN_OVERLAP_EM = -0.45;
 const DEFAULT_ASCENT = 0.8;
 const DEFAULT_DESCENT = -0.2;
 
@@ -58,7 +60,9 @@ export function groupRuns(runs: RawTextRun[]): RawTextRun[][] {
     if (current && sameState(current.runs[0], run)) {
       const start = applyToPoint(current.inverse, { x: run.matrix[4], y: run.matrix[5] });
       const gap = start.x - current.width;
-      if (Math.abs(start.y) < 0.05 && gap > -0.1 && gap < RUN_SPLIT_GAP_EM) {
+      // Kerning can pull a glyph well back over the previous one's advance ("Te", "AV", "y."),
+      // so a negative gap is normal; only a big jump back means a different piece of text.
+      if (Math.abs(start.y) < 0.05 && gap > MAX_KERN_OVERLAP_EM && gap < RUN_SPLIT_GAP_EM) {
         if (gap >= SPACE_GAP_EM && !current.text.endsWith(" ") && !run.run.text.startsWith(" ")) {
           current.text += " ";
         }
@@ -85,6 +89,8 @@ export interface ElementBuildContext {
   fonts: Record<string, FontInfo>;
   pdfjsFonts: Map<string, PdfjsFontProps>;
   documentEditing: Capability;
+  /** Called with the width (ems) of each gap that was read as a space, to learn the font's space width. */
+  onSpaceGap?: (fontKey: string, gapEm: number) => void;
 }
 
 function editabilityOf(runs: RawTextRun[], font: FontInfo | undefined, doc: Capability): Capability {
@@ -114,8 +120,10 @@ export function buildTextElement(runs: RawTextRun[], index: number, ctx: Element
   let width = 0;
   for (const run of runs) {
     const start = applyToPoint(inverse, { x: run.matrix[4], y: run.matrix[5] });
-    if (content && start.x - width >= SPACE_GAP_EM && !content.endsWith(" ") && !run.run.text.startsWith(" ")) {
+    const gap = start.x - width;
+    if (content && gap >= SPACE_GAP_EM && !content.endsWith(" ") && !run.run.text.startsWith(" ")) {
       content += " ";
+      ctx.onSpaceGap?.(first.fontKey, gap);
     }
     content += run.run.text;
     width = Math.max(width, start.x + run.width);

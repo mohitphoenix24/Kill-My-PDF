@@ -30,6 +30,18 @@ export const SCANNED_PDF_MESSAGE =
 class FontCatalog implements FontResolver {
   readonly fonts: Record<string, FontInfo> = {};
   private direct = 0;
+  private readonly spaceGaps = new Map<string, number[]>();
+
+  /** Notes one measured word gap; the font's space width becomes the median of what's been seen. */
+  recordSpaceGap(key: string, gapEm: number): void {
+    const font = this.fonts[key];
+    if (!font || gapEm > 0.6) return; // very wide gaps are justification or columns, not a space
+    const samples = this.spaceGaps.get(key) ?? [];
+    if (samples.length < 400) samples.push(gapEm);
+    this.spaceGaps.set(key, samples);
+    const sorted = samples.slice().sort((a, b) => a - b);
+    font.spaceWidth = Math.round(sorted[Math.floor(sorted.length / 2)] * 1000) / 1000;
+  }
 
   constructor(private readonly doc: PDFDocument) {}
 
@@ -198,6 +210,7 @@ export class PdfSession {
       fonts: this.catalog!.fonts,
       pdfjsFonts,
       documentEditing: this.editing,
+      onSpaceGap: (key: string, gap: number) => this.catalog!.recordSpaceGap(key, gap),
     };
     const elements: PDFElement[] = [];
     groupRuns(result.runs).forEach((runs) => {

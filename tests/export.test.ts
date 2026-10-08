@@ -135,7 +135,7 @@ describe("export: operator coverage", () => {
     const { verification, page, result } = await edit("text-features.pdf", (m) => [
       { type: "setText", elementId: idOf(m, "Kerned TJ"), text: "Kerned ✓" }, // ✓ forces a substitute font
     ]);
-    expect(result.reports[0].strategy).toBe("redraw-substitute");
+    expect(result.reports[0].strategy).toBe("redraw-mixed"); // "Kerned" keeps its font; only "✓" is substituted
     expect(verification.ok).toBe(true);
     // "Far column" lives in the same TJ array after a large gap — it must not move.
     const far = findText(page, "Far column");

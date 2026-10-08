@@ -6,11 +6,13 @@ import type { EditOperation } from "@/lib/editor/operations";
 import { type FontInfo, type PDFPage, isTextElement } from "@/lib/model/types";
 import type { PDFDocumentProxy } from "@/lib/pdf/pdfjs/pdfjs";
 import { Spinner } from "@/components/ui/Button";
+import type { EditSession } from "@/components/editor/editSession";
 import { ElementOverlay, type TapAnchor } from "./ElementOverlay";
 import { InlineTextEditor } from "./InlineTextEditor";
 import { PageCanvas } from "./PageCanvas";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { TextLayerView } from "./TextLayerView";
+import { wordAtTap } from "./textMeasure";
 
 export type Tool = "edit" | "select";
 
@@ -23,22 +25,27 @@ interface Props {
   tool: Tool;
   visible: boolean;
   selectedId: string | null;
-  /** The element being edited (on touch screens the docked edit bar types into it). */
-  editingId: string | null;
+  /** What's being typed (on touch screens the docked edit bar types into it). */
+  session: EditSession | null;
   /** True when typing happens on the page itself (mouse); false when the docked bar is used (touch). */
   editOnPage: boolean;
   anchor: TapAnchor | null;
+  showEdits: boolean;
   widths: ReadonlyMap<string, number>;
   onSelect: (id: string | null, fraction?: number) => void;
   onMove: (id: string, dx: number, dy: number) => void;
   onEdit: (op: EditOperation) => void;
   onEditRequest: (id: string, fraction?: number) => void;
+  onEditLine: (id: string) => void;
+  onTyped: (text: string) => void;
   onStopEditing: () => void;
+  onCancelEditing: () => void;
+  onStep: (direction: 1 | -1) => void;
   onShowDetails: () => void;
 }
 
 const PageViewImpl = forwardRef<HTMLDivElement, Props>(function PageView(
-  { page, doc, fonts, scale, tool, visible, selectedId, editingId, editOnPage, anchor, widths, onSelect, onMove, onEdit, onEditRequest, onStopEditing, onShowDetails },
+  { page, doc, fonts, scale, tool, visible, selectedId, session, editOnPage, anchor, showEdits, widths, onSelect, onMove, onEdit, onEditRequest, onEditLine, onTyped, onStopEditing, onCancelEditing, onStep, onShowDetails },
   ref,
 ) {
   const transform = useMemo(
@@ -47,7 +54,13 @@ const PageViewImpl = forwardRef<HTMLDivElement, Props>(function PageView(
   );
   const textElements = useMemo(() => page.elements.filter(isTextElement), [page.elements]);
   const selected = selectedId ? textElements.find((e) => e.id === selectedId) : undefined;
-  const editing = editingId ? textElements.find((e) => e.id === editingId) : undefined;
+  const editing = session ? textElements.find((e) => e.id === session.id) : undefined;
+  const fontOf = (e: { fontKey?: string }) => (e.fontKey ? fonts[e.fontKey] : undefined);
+  const focus = (() => {
+    if (!selected || !anchor || anchor.id !== selected.id) return null;
+    const word = wordAtTap(selected, fontOf(selected), anchor.fraction);
+    return word ? { from: word.from, to: word.to } : null;
+  })();
   const widthOf = (id: string, fallback: number) => widths.get(id) ?? fallback;
   const editMode = visible && tool === "edit" && page.status === "ready";
   const typingOnPage = !!editing && editOnPage;
@@ -68,11 +81,11 @@ const PageViewImpl = forwardRef<HTMLDivElement, Props>(function PageView(
           fonts={fonts}
           transform={transform}
           selectedId={selectedId}
-          editingId={typingOnPage ? editingId : null}
+          editingId={typingOnPage ? session!.id : null}
           anchor={anchor}
+          showEdits={showEdits}
           widths={widths}
           onSelect={onSelect}
-          onMove={onMove}
           onEditRequest={onEditRequest}
         />
       )}
@@ -81,25 +94,25 @@ const PageViewImpl = forwardRef<HTMLDivElement, Props>(function PageView(
           element={selected}
           transform={transform}
           width={widthOf(selected.id, selected.width)}
+          focus={focus}
           onEdit={onEdit}
-          onStartInlineEdit={() => onEditRequest(selected.id)}
+          onMove={(dx, dy) => onMove(selected.id, dx, dy)}
+          onStartEdit={() => onEditRequest(selected.id, anchor && anchor.id === selected.id ? anchor.fraction : undefined)}
+          onEditLine={() => onEditLine(selected.id)}
           onShowDetails={onShowDetails}
         />
       )}
-      {editMode && typingOnPage && editing && (
+      {editMode && typingOnPage && editing && session && (
         <InlineTextEditor
-          key={editing.id}
+          key={`${editing.id}:${session.whole ? "line" : session.prefix.length}`}
           element={editing}
-          font={editing.fontKey ? fonts[editing.fontKey] : undefined}
+          font={fontOf(editing)}
           transform={transform}
-          width={widthOf(editing.id, editing.width)}
-          anchor={anchor && anchor.id === editing.id ? anchor.fraction : null}
-          onChange={(text) => onEdit({ type: "setText", elementId: editing.id, text })}
+          session={session}
+          onTyped={onTyped}
           onDone={onStopEditing}
-          onCancel={(initial) => {
-            if (initial !== editing.content) onEdit({ type: "setText", elementId: editing.id, text: initial });
-            onStopEditing();
-          }}
+          onCancel={onCancelEditing}
+          onStep={onStep}
         />
       )}
       {page.status === "pending" && visible && (

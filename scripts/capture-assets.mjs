@@ -40,7 +40,7 @@ async function settle(page, ms = 700) {
   await settle(page);
   await page.screenshot({ path: join(shots, "editor.png") });
   await page.mouse.dblclick(box.x + box.width * 0.12, box.y + box.height / 2); // double-click "Acme": only that word is picked
-  await page.getByLabel("Edit text inline").waitFor();
+  await page.getByLabel("Edit word inline").waitFor();
   await page.keyboard.type("Globex");
   await page.waitForTimeout(300);
   await page.screenshot({ path: join(shots, "inline-editing.png") });

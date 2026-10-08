@@ -78,10 +78,21 @@ The uploaded bytes are never modified. The edited document is always `analysedMo
 
 1. **In place.** The string operand inside the original `Tj`/`TJ`/`'`/`"` is rewritten in the original font. Position, clipping, transparency, z-order and tagging are all untouched. Used when only the text changed and the font can draw every new character.
 2. **Redraw with the original font.** Used for moves, size changes and colour changes. The original operator is *neutralised*: it is replaced by a `TJ` kerning value of exactly the same width, so text that continues after it on the same line doesn't shift. The text is then drawn again with the same font resource.
-3. **Redraw with a substitute font.** Used when the original font can't draw the new text, for example an embedded subset that lacks the glyph "8".
-4. **Removed.** Used when the text is cleared.
+3. **Redraw word by word (mixed).** Used when the original font can't draw *some* words of the new text, for example a subset that never included a capital "G". Words the font can draw stay in it; only the words that need a missing glyph use a substitute font. Neighbouring words of the same kind are drawn together and placed one after another along the baseline, so it reads as one line.
+4. **Redraw with a substitute font.** Used when the original font can't draw any word of the new text (or it is a single word).
+5. **Removed.** Used when the text is cleared.
 
 The content stream that was replaced is deleted from the file, so the old text doesn't remain anywhere in it. The pixel test confirms nothing outside the edited text changes.
+
+### Spaces that aren't there (Chrome / Skia PDFs)
+
+"Print to PDF" in Chrome is the most commonly edited kind of file, and it differs from most generators: every glyph can be its own text operator, fonts are subsets, and older builds draw **no space glyph at all**: the next word is just positioned further along. Three things follow:
+
+- Grouping tolerates the kerning overlaps those files contain (down to −0.45 em), so a line is never split in the middle of a word.
+- Each font learns a `spaceWidth` (the median measured word gap, or the font's own space glyph when the file draws one).
+- A space the font can't draw is written as a `TJ` kerning move of that width. A line keeps its original font after an edit instead of being swapped wholesale for a substitute.
+
+The unit tests run every Chrome case twice, once on a real Chromium print and once on the same file with its space glyphs stripped out.
 
 ### Width changes
 
@@ -153,7 +164,7 @@ Dark only. Tokens are defined once in `src/app/globals.css`:
 | `volt-400` (#c6f135) | The one accent — an electric lime, like a highlighter. Used for primary actions, focus and "selected / edited". Text on it is always `ink-950`. |
 | `coral-*` | Destructive actions and errors, tuned lighter for dark backgrounds. |
 
-On the white PDF page itself, the accent works as a literal highlighter: hover paints a lime marker, selection adds an ink outline, and edited text keeps a dashed olive outline — all readable on white paper.
+On the white PDF page itself, the accent works as a literal highlighter: hover paints a lime marker, selection adds an ink outline, and edited text can be outlined with a dashed olive line. That outline is an editor aid only: it is never written to the PDF, and it is off by default (the eye button in the dock turns it on).
 
 Contrast was checked, not eyeballed: body text on the page is 16.5:1, muted text on cards is 6.9:1, and ink on the lime button is 14.3:1 (all above WCAG AA).
 

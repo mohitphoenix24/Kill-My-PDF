@@ -15,6 +15,7 @@ import type { TapAnchor } from "@/components/viewer/ElementOverlay";
 import { createPageTransform } from "@/lib/geometry/coordinates";
 import { downloadBytes, editedFileName, loadBundledFont, readFileBytes } from "@/lib/browser/files";
 import { EMPTY_HISTORY, type EditHistory, appliedOps, canRedo, canUndo, record, redo, undo } from "@/lib/editor/history";
+import type { FontInfo, TextElement } from "@/lib/model/types";
 import { type EditOperation, applyOperation, applyOperations, changedElements, findTextElement, pageNumberOf } from "@/lib/editor/operations";
 import { exportPdf } from "@/lib/pdf/export/exporter";
 import { verifyExport } from "@/lib/pdf/export/verify";
@@ -22,6 +23,7 @@ import { userMessageOf } from "@/lib/pdf/errors";
 import { SCANNED_PDF_MESSAGE } from "@/lib/pdf/session";
 import { Inspector } from "./Inspector";
 import { MobileEditBar } from "./MobileEditBar";
+import { type EditSession, adjacentWord, beginEdit, fullText, lineSession, toWholeLine } from "./editSession";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { ThumbnailRail } from "./ThumbnailRail";
 import { TopBar } from "./TopBar";
@@ -64,7 +66,10 @@ export default function Workspace({ file, toast, onExit }: Props) {
   const [history, setHistory] = useState<EditHistory>(EMPTY_HISTORY);
   const [savedHistory, setSavedHistory] = useState<EditHistory>(EMPTY_HISTORY);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  /** What's being typed right now (a word or a whole line), if anything. */
+  const [edit, setEdit] = useState<EditSession | null>(null);
+  const editRef = useRef<EditSession | null>(null);
+  const [showEdits, setShowEdits] = useState(false);
   /** The word the last tap landed on; the editor starts with it selected. */
   const [anchor, setAnchor] = useState<TapAnchor | null>(null);
   const [tool, setTool] = useState<Tool>("edit");
@@ -109,7 +114,7 @@ export default function Workspace({ file, toast, onExit }: Props) {
   const editedPages = useMemo(() => new Set(changed.map((e) => e.pageNumber)), [changed]);
   const dirty = editCount > 0 && (savedHistory.ops !== history.ops || savedHistory.cursor !== history.cursor);
   const selected = model && selectedId ? (findTextElement(model, selectedId) ?? null) : null;
-  const editingElement = model && editingId ? (findTextElement(model, editingId) ?? null) : null;
+  const editingElement = model && edit ? (findTextElement(model, edit.id) ?? null) : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -130,7 +135,7 @@ export default function Workspace({ file, toast, onExit }: Props) {
     setHistory(EMPTY_HISTORY);
     setSavedHistory(EMPTY_HISTORY);
     setSelectedId(null);
-    setEditingId(null);
+    setEdit(null);
     setCurrentPage(1);
     setZoom("fit");
     setTool("edit");
@@ -260,42 +265,108 @@ export default function Workspace({ file, toast, onExit }: Props) {
   const select = useCallback((id: string | null, fraction?: number) => {
     setSelectedId(id);
     setAnchor(id !== null && fraction !== undefined ? { id, fraction } : null);
-    setEditingId((editing) => (editing && editing !== id ? null : editing));
+    setEdit((current) => (current && current.id !== id ? null : current));
   }, []);
 
   const scaleRef = useRef(1);
-  /** Double-click / Enter: type on the page when the text is horizontal, otherwise in the panel. */
-  const startEditing = useCallback((id: string, fraction?: number) => {
-    const current = modelRef.current;
-    const element = current && findTextElement(current, id);
-    if (!current || !element || !element.editability.allowed) return;
-    setSelectedId(id);
-    setAnchor(fraction !== undefined ? { id, fraction } : null);
-    const page = current.pages[pageNumberOf(id) - 1];
-    // Touch screens always use the docked bar (it works for rotated text too); the mouse types on the page.
-    if (touch || canEditInline(element, createPageTransform(page, scaleRef.current))) {
-      setEditingId(id);
-    } else {
-      setInspectorOpen(true);
-      setFocusRequest((n) => n + 1);
-    }
-  }, [touch]);
-  const stopEditing = useCallback(() => setEditingId(null), []);
+  const anchorRef = useRef<TapAnchor | null>(null);
+  useEffect(() => {
+    anchorRef.current = anchor;
+    editRef.current = edit;
+  });
+
+  /**
+   * Opens a field for `make(element, font)`: on the page for horizontal text with a mouse, in the docked
+   * bar on touch screens, or in the properties panel for rotated text.
+   */
+  const openField = useCallback(
+    (id: string, make: (element: TextElement, font: FontInfo | undefined) => EditSession) => {
+      const current = modelRef.current;
+      const element = current && findTextElement(current, id);
+      if (!current || !element || !element.editability.allowed) return;
+      setSelectedId(id);
+      const page = current.pages[pageNumberOf(id) - 1];
+      // Touch screens always use the docked bar (it works for rotated text too); the mouse types on the page.
+      if (touch || canEditInline(element, createPageTransform(page, scaleRef.current))) {
+        const next = make(element, element.fontKey ? current.fonts[element.fontKey] : undefined);
+        editRef.current = next;
+        setEdit(next);
+      } else {
+        setInspectorOpen(true);
+        setFocusRequest((n) => n + 1);
+      }
+    },
+    [touch],
+  );
+
+  /** Double-click / second tap / Enter: edit the word that was pointed at (or the whole line if none). */
+  const startEditing = useCallback(
+    (id: string, fraction?: number) => {
+      const marked = anchorRef.current && anchorRef.current.id === id ? anchorRef.current.fraction : null;
+      const at = fraction ?? marked;
+      if (at !== null) setAnchor({ id, fraction: at });
+      openField(id, (element, font) => beginEdit(element, font, at));
+    },
+    [openField],
+  );
+  const editLine = useCallback((id: string) => openField(id, (element) => lineSession(element)), [openField]);
+
+  const onTyped = useCallback(
+    (text: string) => {
+      const current = editRef.current;
+      if (!current) return;
+      const next = { ...current, typed: text };
+      editRef.current = next;
+      setEdit(next);
+      applyEdit({ type: "setText", elementId: current.id, text: fullText(next) });
+    },
+    [applyEdit],
+  );
+  const stopEditing = useCallback(() => setEdit(null), []);
+  const cancelEditing = useCallback(() => {
+    const current = editRef.current;
+    if (current) applyEdit({ type: "setText", elementId: current.id, text: current.original });
+    setEdit(null);
+  }, [applyEdit]);
+  /** Tab / Shift+Tab: keep what's typed and move on to the neighbouring word. */
+  const stepWord = useCallback(
+    (direction: 1 | -1) => {
+      const current = editRef.current;
+      const model = modelRef.current;
+      const element = model && current && findTextElement(model, current.id);
+      if (!model || !current || !element) return setEdit(null);
+      const next = adjacentWord(current, element, element.fontKey ? model.fonts[element.fontKey] : undefined, direction);
+      if (!next) return setEdit(null);
+      editRef.current = next;
+      setEdit(next);
+      setAnchor({ id: element.id, fraction: Math.min(1, Math.max(0, (next.startEm + next.widthEm / 2) / Math.max(element.width, 0.0001))) });
+    },
+    [],
+  );
+  const wholeLine = useCallback(() => {
+    const current = editRef.current;
+    const model = modelRef.current;
+    const element = model && current && findTextElement(model, current.id);
+    if (!current || !element) return;
+    const next = toWholeLine(current, element);
+    editRef.current = next;
+    setEdit(next);
+  }, []);
   const showDetails = useCallback(() => setInspectorOpen(true), []);
 
   const doUndo = useCallback(() => {
-    setEditingId(null);
+    setEdit(null);
     setHistory(undo);
   }, []);
   const doRedo = useCallback(() => {
-    setEditingId(null);
+    setEdit(null);
     setHistory(redo);
   }, []);
 
   // ---- Saving ----------------------------------------------------------------
   const save = useCallback(async () => {
     if (!session || !model || editCount === 0 || saving) return;
-    setEditingId(null);
+    setEdit(null);
     setSaving(true);
     try {
       const result = await exportPdf({ originalBytes: session.originalBytes, model, loadFontFile: loadBundledFont });
@@ -304,7 +375,7 @@ export default function Workspace({ file, toast, onExit }: Props) {
       downloadBytes(result.bytes, name);
       setSavedHistory(history);
       if (verification.ok) {
-        const substituted = result.reports.filter((r) => r.strategy === "redraw-substitute").length;
+        const substituted = result.reports.filter((r) => r.strategy === "redraw-substitute" || r.strategy === "redraw-mixed").length;
         toast({
           tone: "success",
           title: `Downloaded ${name}`,
@@ -463,24 +534,20 @@ export default function Workspace({ file, toast, onExit }: Props) {
             onRedo={doRedo}
             onToolChange={(t) => {
               setTool(t);
-              setEditingId(null);
+              setEdit(null);
             }}
             onShortcuts={() => setShortcutsOpen(true)}
             onToggleInspector={() => setInspectorOpen((o) => !o)}
           />
 
-          {touch && editingElement && (
+          {touch && edit && editingElement && (
             <MobileEditBar
-              key={editingElement.id}
-              element={editingElement}
-              font={editingElement.fontKey ? model.fonts[editingElement.fontKey] : undefined}
-              anchor={anchor && anchor.id === editingElement.id ? anchor.fraction : null}
-              onChange={(text) => applyEdit({ type: "setText", elementId: editingElement.id, text })}
+              key={`${edit.id}:${edit.whole ? "line" : edit.prefix.length}`}
+              session={edit}
+              onTyped={onTyped}
               onDone={stopEditing}
-              onCancel={(initial) => {
-                if (initial !== editingElement.content) applyEdit({ type: "setText", elementId: editingElement.id, text: initial });
-                stopEditing();
-              }}
+              onCancel={cancelEditing}
+              onWholeLine={wholeLine}
             />
           )}
 
@@ -515,9 +582,10 @@ export default function Workspace({ file, toast, onExit }: Props) {
                 scale={scale}
                 tool={tool}
                 selectedId={selectedId}
-                editingId={editingId}
+                session={edit}
                 editOnPage={!touch}
                 anchor={anchor}
+                showEdits={showEdits}
                 widths={widths}
                 scrollRequest={scrollRequest}
                 onZoomTo={zoomTo}
@@ -525,7 +593,11 @@ export default function Workspace({ file, toast, onExit }: Props) {
                 onMove={handleMove}
                 onEdit={applyEdit}
                 onEditRequest={startEditing}
+                onEditLine={editLine}
+                onTyped={onTyped}
                 onStopEditing={stopEditing}
+                onCancelEditing={cancelEditing}
+                onStep={stepWord}
                 onShowDetails={showDetails}
                 onPageVisible={ensureAnalyzed}
                 onCurrentPageChange={setCurrentPage}
@@ -544,6 +616,9 @@ export default function Workspace({ file, toast, onExit }: Props) {
                   onZoomIn={zoomIn}
                   onZoomOut={zoomOut}
                   onFitWidth={fitWidth}
+                  showEdits={showEdits}
+                  canShowEdits={editCount > 0}
+                  onToggleEdits={() => setShowEdits((v) => !v)}
                 />
               )}
             </main>

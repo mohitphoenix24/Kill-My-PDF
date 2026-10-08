@@ -22,8 +22,9 @@ try {
   const tap = await pointOn(page, "EMP1024", 0.5);
   await page.touchscreen.tap(tap.x, tap.y);
   await toolbar.waitFor();
-  for (const name of ["Larger", "Smaller", "Remove text", "More options"]) {
-    const box = await page.getByRole("button", { name }).boundingBox();
+  for (const name of ["Move line (drag)", "Edit the whole line", "Text colour", "Remove line", "More options"]) {
+    const target = name === "Text colour" ? page.getByLabel(name) : page.getByRole("button", { name });
+    const box = await target.boundingBox();
     assert.ok(box && box.width >= 40 && box.height >= 40, `${name} is ${box?.width}×${box?.height}`);
   }
   await shot("t02-selected");
@@ -45,12 +46,12 @@ try {
   await shot("t03-word-marked");
   await page.touchscreen.tap(sharma.x, sharma.y);
   await editBar.waitFor();
-  const input = editBar.getByLabel("Edit text");
-  const [a, b] = await input.evaluate((el) => [el.selectionStart, el.selectionEnd]);
-  assert.equal("Mohit Sharma".slice(a, b), "Sharma", "only the tapped word is selected");
+  const input = editBar.getByLabel("Edit word");
+  assert.equal(await input.inputValue(), "Sharma", "the bar holds only the tapped word");
+  assert.equal(await input.evaluate((el) => el.selectionEnd - el.selectionStart), 6, "…and it is selected for typing");
   assert.equal(await input.evaluate((el) => getComputedStyle(el).fontSize), "16px", "16px, so iOS doesn't zoom the page");
   await page.keyboard.type("Verma");
-  assert.equal(await input.inputValue(), "Mohit Verma");
+  assert.equal(await input.inputValue(), "Verma");
   await shot("t04-edit-bar");
   await page.getByRole("button", { name: "Done editing" }).tap();
   await editBar.waitFor({ state: "detached" });
