@@ -4,17 +4,27 @@ import { useEffect, useRef } from "react";
 import type { PageTransform } from "@/lib/geometry/coordinates";
 import { rotationDegrees } from "@/lib/geometry/matrix";
 import type { FontInfo, TextElement } from "@/lib/model/types";
+import { toUtf16Range } from "@/lib/text/words";
 import { elementScreenMatrix } from "./elementGeometry";
-
-const CSS_FAMILY: Record<NonNullable<FontInfo["family"]>, string> = {
-  serif: '"Times New Roman", Times, serif',
-  sans: "Helvetica, Arial, sans-serif",
-  mono: '"Courier New", Courier, monospace',
-};
+import { cssFamilyFor, wordAtTap } from "./textMeasure";
 
 /** Inline editing works on text that reads horizontally on screen; other text is edited in the panel. */
 export function canEditInline(element: TextElement, transform: PageTransform): boolean {
   return Math.abs(rotationDegrees(elementScreenMatrix(element, transform))) < 0.5;
+}
+
+/** Puts the caret where the user tapped: the tapped word is selected, or everything when there's no tap. */
+export function selectTappedWord(input: HTMLInputElement, element: TextElement, font: FontInfo | undefined, fraction: number | null): void {
+  input.focus();
+  if (fraction !== null) {
+    const word = wordAtTap(element, font, fraction);
+    if (word) {
+      const [start, end] = toUtf16Range(element.content, word.start, word.end);
+      input.setSelectionRange(start, end);
+      return;
+    }
+  }
+  input.select();
 }
 
 interface Props {
@@ -22,6 +32,8 @@ interface Props {
   font: FontInfo | undefined;
   transform: PageTransform;
   width: number;
+  /** Where along the line the user tapped (0–1); that word starts out selected. */
+  anchor: number | null;
   onChange: (text: string) => void;
   /** Finish editing, keeping the text. */
   onDone: () => void;
@@ -30,17 +42,18 @@ interface Props {
 }
 
 /**
- * A text field placed exactly over the text being edited, sized to the PDF font
- * size at the current zoom. The real result is the export preview rendered
- * underneath; this field only approximates the font for typing comfort.
+ * A text field placed exactly over the text being edited, sized to the PDF font size at the
+ * current zoom. The real result is the export preview rendered underneath; this field only
+ * approximates the font for typing comfort. (Touch devices use the docked MobileEditBar instead.)
  */
-export function InlineTextEditor({ element, font, transform, width, onChange, onDone, onCancel }: Props) {
+export function InlineTextEditor({ element, font, transform, width, anchor, onChange, onDone, onCancel }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const initialText = useRef(element.content);
 
   useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
+    if (inputRef.current) selectTappedWord(inputRef.current, element, font, anchor);
+    // Only on mount: later keystrokes must not move the selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const m = elementScreenMatrix(element, transform);
@@ -64,7 +77,7 @@ export function InlineTextEditor({ element, font, transform, width, onChange, on
         if (e.key === "Escape") onCancel(initialText.current);
       }}
       onPointerDown={(e) => e.stopPropagation()}
-      className="absolute z-20 rounded-[3px] bg-white text-zinc-900 shadow-[0_0_0_2px_rgb(99_102_241),0_8px_24px_-6px_rgb(0_0_0/0.25)] outline-none"
+      className="absolute z-20 rounded-[3px] bg-white text-ink-900 shadow-[0_0_0_2px_#0d0d0f,0_0_0_5px_rgb(198_241_53/0.7),0_12px_30px_-8px_rgb(0_0_0/0.5)] outline-none"
       style={{
         left: m[4] - padX,
         top,
@@ -73,7 +86,7 @@ export function InlineTextEditor({ element, font, transform, width, onChange, on
         paddingInline: padX,
         fontSize: fontPx,
         lineHeight: `${height}px`,
-        fontFamily: CSS_FAMILY[font?.family ?? "sans"],
+        fontFamily: cssFamilyFor(font),
         fontWeight: element.style.fontWeight ?? 400,
         fontStyle: element.style.fontStyle === "italic" ? "italic" : "normal",
         color: element.style.color ?? "#000",

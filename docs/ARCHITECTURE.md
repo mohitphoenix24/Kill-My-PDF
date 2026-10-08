@@ -1,6 +1,36 @@
 # Architecture and design decisions
 
-This document explains how the editor reads, edits and writes PDFs, and why it works the way it does. For an overview and setup instructions, see the [README](../README.md).
+This document explains how KillMyPDF works: the text editor (which reads, edits and writes PDF text), the page-level tools (merge, organize, split, images → PDF), the interface, and the reasoning behind the main decisions. For an overview and setup instructions, see the [README](../README.md).
+
+- [Site structure](#site-structure)
+- [Text editor](#text-editor)
+- [Page tools](#page-tools)
+- [Touch and mobile](#touch-and-mobile)
+- [Design system](#design-system)
+- [Known limitations](#known-limitations)
+
+## Site structure
+
+```text
+/                  Home: tool picker                      (Home.tsx, server-rendered)
+/edit-pdf/         Edit PDF text                          ┐
+/merge-pdf/        Merge PDF                              │ each is a prerendered start page
+/organize-pdf/     Organize pages                         │ (hero + drop zone + how-it-works + FAQ)
+/images-to-pdf/    Images to PDF                          │ plus a lazily loaded work screen
+/split-pdf/        Split PDF                              ┘
+```
+
+Everything about a tool — name, copy, SEO text, FAQ — lives in one registry, [`src/config/tools.ts`](../src/config/tools.ts). The home grid, header nav, tool pages, sitemap, web-manifest shortcuts and structured data all read from it, so **adding a tool is one registry entry plus one work component**:
+
+1. Add an entry to `TOOLS` and a slug to `ToolSlug`.
+2. Create `src/components/tools/<slug>/<Name>Work.tsx` (receives `{ files, toast, onExit }`).
+3. Register it in `workComponents.tsx`, add an icon in `toolIcons.tsx`, and add `src/app/<slug>/page.tsx` (three lines).
+
+Start pages are static HTML, so they are indexable and instant; the work screens (which pull in pdf.js and pdf-lib, ~1.7 MB) load only once a file is chosen, and are warmed up while the start page is idle.
+
+A finished PDF can be passed on to another tool without a re-upload (`src/lib/handoff.ts`): the result screen's "Keep going with this PDF" buttons hand the file over in memory and navigate. It never touches storage or a server.
+
+## Text editor
 
 ## Architecture
 
@@ -77,6 +107,57 @@ These are left `undefined`, never guessed:
 - **Colour in Pattern, Separation, DeviceN or Lab colour spaces.**
 
 Bold and italic come from the font descriptor flags where available. Otherwise they are read from the font name, for example `Arial-BoldMT`. The model records which source was used (`styleSource`).
+
+## Page tools
+
+All of them live in `src/lib/pdf/tools/` as plain functions over pdf-lib documents (no DOM), so they're unit-tested in Node. The screens in `src/components/tools/` only collect input and call them.
+
+| Module | What it does |
+|---|---|
+| `merge.ts` | Appends every page of each document, in order, into a fresh document. |
+| `organize.ts` | Builds a new document from a plan: pages can be reordered, dropped, **duplicated** and rotated. |
+| `pagePlan.ts` | The state behind the Organize screen: the plan, plus undo/redo, rotate, delete, duplicate, reverse and move-as-a-group. Pure functions. |
+| `split.ts`, `ranges.ts` | Extract pages; parse ranges like `1-3, 5, 8-` into friendly errors; chunk every N pages. |
+| `zip.ts` | Bundles parts into a store-only `.zip` (PDFs are already compressed) with unique names. |
+| `images.ts`, `imageFormat.ts` | Page layout (A4, Letter, fit-to-image, orientation, margins) and byte-level JPEG/PNG sniffing, including EXIF orientation. |
+| `imageDecode.ts` | The only browser-specific part: canvas decoding for formats PDF can't embed directly, rotation, thumbnails. |
+
+Decisions worth knowing:
+
+- **Pages are copied into a new file, never deleted in place.** pdf-lib keeps a deleted page's objects in the file unless they're unreferenced; copying only the pages you keep means deleted pages (and anything only they used) are really gone. A test searches every decoded stream to prove it.
+- **Rotation is written explicitly** from the source page's own rotation plus the user's, so an inherited `/Rotate` isn't lost.
+- **JPEG and PNG go in byte-for-byte** whenever possible (baseline/progressive 8-bit JPEG, non-interlaced 8-bit PNG, no EXIF rotation) — no re-compression, smallest output. Anything else (EXIF-rotated phone photos, CMYK, interlaced, WebP, GIF, BMP, AVIF, or a user rotation) is redrawn on a canvas, as PNG if it has transparency and a 92% JPEG otherwise.
+- **Merging does not carry over** bookmarks or fillable form fields. Pages, text, images and fonts are copied intact.
+- **Encrypted PDFs are rejected** with a clear message: pdf-lib can copy their still-encrypted streams, producing garbage, so we refuse instead.
+
+## Touch and mobile
+
+Most "tapped one thing, selected another" problems on phones come from treating touch like a mouse. The editor's overlay (`ElementOverlay.tsx`) is built around how fingers actually behave:
+
+- **Selection happens on release, not on touch-down.** Starting a scroll on top of text never selects it; a gesture that moves more than 10 px or lasts over 700 ms is a scroll, not a tap.
+- **One hit-tester with a generous margin.** A tap resolves to the *nearest* text box within 14 px (3 px for a mouse), preferring the smaller box when several overlap, so small text at a fit-to-width zoom is hittable.
+- **Tap, then tap again.** The first tap selects the line and marks the **word** under the finger; the second tap edits, with exactly that word selected. (The same targeting is used for mouse double-click.) Word position along the line comes from `src/lib/text/words.ts`, which works on proportional character positions, so it doesn't depend on the stand-in browser font matching the PDF font.
+- **Typing on touch screens happens in a docked bar** (`MobileEditBar.tsx`), not a field on the page: it uses a 16 px font (iOS zooms the whole page into smaller inputs), stays above the on-screen keyboard, and the page behind updates live. The line being edited is scrolled clear of the keyboard.
+- **Browsers fire fake mouse events after `touchend`**, and their `mousedown` pulls focus off the field that was just focused (hiding the keyboard). The overlay cancels them (`touchend` → `preventDefault`), and the edit bar has a short refocus guard as a safety net.
+- **Pinch to zoom** is handled in `PdfViewer.tsx`: the pages scale live with a CSS transform, then the real zoom is committed on release with the spot under the fingers kept fixed. `touch-action: pan-x pan-y` hands panning to the browser and leaves pinch to us.
+- **Finger-sized targets** use Tailwind's `pointer-coarse:` variant (44 px) — keyed to the input device, not the screen width, so a touch laptop gets them too.
+- Reordering in the page tools offers drag (touch drags start after a short press so scrolling still works) **and** explicit arrow buttons, because arrows are more reliable than dragging on a phone.
+
+## Design system
+
+Dark only. Tokens are defined once in `src/app/globals.css`:
+
+| Token | Role |
+|---|---|
+| `ink-950 … 50` | Neutral surfaces and text. 950 page · 900 panels · 850 cards · 800 inputs. Dark grey rather than black, with elevation shown by lighter surfaces. |
+| `volt-400` (#c6f135) | The one accent — an electric lime, like a highlighter. Used for primary actions, focus and "selected / edited". Text on it is always `ink-950`. |
+| `coral-*` | Destructive actions and errors, tuned lighter for dark backgrounds. |
+
+On the white PDF page itself, the accent works as a literal highlighter: hover paints a lime marker, selection adds an ink outline, and edited text keeps a dashed olive outline — all readable on white paper.
+
+Contrast was checked, not eyeballed: body text on the page is 16.5:1, muted text on cards is 6.9:1, and ink on the lime button is 14.3:1 (all above WCAG AA).
+
+Type: **Bricolage Grotesque** for headlines (casual, with character), **Geist** for the interface, **Geist Mono** for small labels. The voice is deliberately loose — "Glue PDFs together", "Photos in. PDF out." — while error messages stay plain and specific.
 
 ## Known limitations
 

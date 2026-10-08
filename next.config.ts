@@ -4,6 +4,8 @@ import type { NextConfig } from "next";
 // (`out/`) is plain static assets that Netlify can serve without functions.
 const nextConfig: NextConfig = {
   output: "export",
+  // /tool/ → tool/index.html: works on every static host, and gives each tool a clean canonical URL.
+  trailingSlash: true,
   // The floating "N" dev badge overlaps the editor's canvas controls.
   devIndicators: false,
   env: {

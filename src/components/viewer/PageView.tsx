@@ -6,7 +6,7 @@ import type { EditOperation } from "@/lib/editor/operations";
 import { type FontInfo, type PDFPage, isTextElement } from "@/lib/model/types";
 import type { PDFDocumentProxy } from "@/lib/pdf/pdfjs/pdfjs";
 import { Spinner } from "@/components/ui/Button";
-import { ElementOverlay } from "./ElementOverlay";
+import { ElementOverlay, type TapAnchor } from "./ElementOverlay";
 import { InlineTextEditor } from "./InlineTextEditor";
 import { PageCanvas } from "./PageCanvas";
 import { SelectionToolbar } from "./SelectionToolbar";
@@ -23,18 +23,22 @@ interface Props {
   tool: Tool;
   visible: boolean;
   selectedId: string | null;
+  /** The element being edited (on touch screens the docked edit bar types into it). */
   editingId: string | null;
+  /** True when typing happens on the page itself (mouse); false when the docked bar is used (touch). */
+  editOnPage: boolean;
+  anchor: TapAnchor | null;
   widths: ReadonlyMap<string, number>;
-  onSelect: (id: string | null) => void;
+  onSelect: (id: string | null, fraction?: number) => void;
   onMove: (id: string, dx: number, dy: number) => void;
   onEdit: (op: EditOperation) => void;
-  onEditRequest: (id: string) => void;
+  onEditRequest: (id: string, fraction?: number) => void;
   onStopEditing: () => void;
   onShowDetails: () => void;
 }
 
 const PageViewImpl = forwardRef<HTMLDivElement, Props>(function PageView(
-  { page, doc, fonts, scale, tool, visible, selectedId, editingId, widths, onSelect, onMove, onEdit, onEditRequest, onStopEditing, onShowDetails },
+  { page, doc, fonts, scale, tool, visible, selectedId, editingId, editOnPage, anchor, widths, onSelect, onMove, onEdit, onEditRequest, onStopEditing, onShowDetails },
   ref,
 ) {
   const transform = useMemo(
@@ -46,6 +50,7 @@ const PageViewImpl = forwardRef<HTMLDivElement, Props>(function PageView(
   const editing = editingId ? textElements.find((e) => e.id === editingId) : undefined;
   const widthOf = (id: string, fallback: number) => widths.get(id) ?? fallback;
   const editMode = visible && tool === "edit" && page.status === "ready";
+  const typingOnPage = !!editing && editOnPage;
 
   return (
     <div
@@ -60,9 +65,11 @@ const PageViewImpl = forwardRef<HTMLDivElement, Props>(function PageView(
       {editMode && (
         <ElementOverlay
           elements={textElements}
+          fonts={fonts}
           transform={transform}
           selectedId={selectedId}
-          editingId={editingId}
+          editingId={typingOnPage ? editingId : null}
+          anchor={anchor}
           widths={widths}
           onSelect={onSelect}
           onMove={onMove}
@@ -79,13 +86,14 @@ const PageViewImpl = forwardRef<HTMLDivElement, Props>(function PageView(
           onShowDetails={onShowDetails}
         />
       )}
-      {editMode && editing && (
+      {editMode && typingOnPage && editing && (
         <InlineTextEditor
           key={editing.id}
           element={editing}
           font={editing.fontKey ? fonts[editing.fontKey] : undefined}
           transform={transform}
           width={widthOf(editing.id, editing.width)}
+          anchor={anchor && anchor.id === editing.id ? anchor.fraction : null}
           onChange={(text) => onEdit({ type: "setText", elementId: editing.id, text })}
           onDone={onStopEditing}
           onCancel={(initial) => {
@@ -95,12 +103,12 @@ const PageViewImpl = forwardRef<HTMLDivElement, Props>(function PageView(
         />
       )}
       {page.status === "pending" && visible && (
-        <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-zinc-900/85 px-2.5 py-1 text-[11px] font-medium text-white ring-1 ring-white/10 backdrop-blur">
+        <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-ink-900/90 px-2.5 py-1 text-[11px] font-medium text-white ring-1 ring-white/10 backdrop-blur">
           <Spinner className="size-3" /> Analysing
         </div>
       )}
       {page.status === "error" && (
-        <div className="absolute inset-x-3 top-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 ring-1 ring-red-200">{page.error}</div>
+        <div className="absolute inset-x-3 top-3 rounded-lg bg-coral-500/10 px-3 py-2 text-xs text-coral-300 ring-1 ring-coral-500/25">{page.error}</div>
       )}
     </div>
   );

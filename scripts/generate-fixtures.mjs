@@ -2,7 +2,8 @@
 // needs re-running when fixtures change.
 // Encrypted fixtures additionally need Ghostscript (`gs`) on PATH.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { deflateSync } from "node:zlib";
 import { join } from "node:path";
 import { PDFDocument, PDFName, StandardFonts, degrees, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
@@ -72,12 +73,12 @@ async function showcaseInvoice() {
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const ink = rgb(0.11, 0.12, 0.16);
   const muted = rgb(0.45, 0.47, 0.53);
-  const accent = rgb(0.31, 0.27, 0.9);
+  const accent = rgb(0.4, 0.52, 0.07); // olive-lime, matching the app's accent on white paper
   const line = rgb(0.88, 0.89, 0.92);
 
-  page.drawRectangle({ x: 0, y: 792, width: 595, height: 50, color: accent });
+  page.drawRectangle({ x: 0, y: 792, width: 595, height: 50, color: rgb(0.08, 0.08, 0.09) });
   page.drawText("Northwind Studio", { x: 56, y: 811, size: 16, font: bold, color: rgb(1, 1, 1) });
-  page.drawText("hello@northwind.example", { x: 400, y: 812, size: 10, font: regular, color: rgb(0.88, 0.88, 1) });
+  page.drawText("hello@northwind.example", { x: 400, y: 812, size: 10, font: regular, color: rgb(0.78, 0.94, 0.21) });
 
   page.drawText("Invoice", { x: 56, y: 730, size: 30, font: bold, color: ink });
   page.drawText("INV-2048", { x: 56, y: 708, size: 12, font: regular, color: muted });
@@ -250,6 +251,71 @@ try {
   gs(["-sOwnerPassword=owner", "-dEncryptionR=3", "-dKeyLength=128", "-dPermissions=-3904", `-sOutputFile=${join(fixtures, "encrypted-no-password.pdf")}`]);
 } catch (error) {
   console.warn("Skipped encrypted fixtures (Ghostscript not available):", error.message);
+}
+
+// 9. Image fixtures for images → PDF (JPEGs via Poppler; PNGs from a tiny encoder below).
+function crc32(buf) {
+  let c;
+  let crc = 0xffffffff;
+  for (let n = 0; n < buf.length; n++) {
+    c = (crc ^ buf[n]) & 0xff;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    crc = (crc >>> 8) ^ c;
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+function pngChunk(type, data) {
+  const out = Buffer.alloc(12 + data.length);
+  out.writeUInt32BE(data.length, 0);
+  out.write(type, 4, "ascii");
+  data.copy(out, 8);
+  out.writeUInt32BE(crc32(out.subarray(4, 8 + data.length)), 8 + data.length);
+  return out;
+}
+/** 8-bit RGBA PNG with a diagonal gradient and a fully transparent corner. */
+function makePng(width, height, interlaced = false) {
+  const raw = Buffer.alloc((width * 4 + 1) * height);
+  for (let y = 0; y < height; y++) {
+    raw[y * (width * 4 + 1)] = 0;
+    for (let x = 0; x < width; x++) {
+      const i = y * (width * 4 + 1) + 1 + x * 4;
+      raw[i] = Math.round((x / width) * 255);
+      raw[i + 1] = Math.round((y / height) * 255);
+      raw[i + 2] = 180;
+      raw[i + 3] = x < width / 4 && y < height / 4 ? 0 : 255;
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+  ihdr[12] = interlaced ? 1 : 0; // (declared only; used to test that interlaced files take the canvas path)
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), pngChunk("IHDR", ihdr), pngChunk("IDAT", deflateSync(raw)), pngChunk("IEND", Buffer.alloc(0))]);
+}
+/** Inserts an EXIF APP1 segment that sets the orientation tag. */
+function withExifOrientation(jpeg, orientation) {
+  const tiff = Buffer.from([0x4d, 0x4d, 0x00, 0x2a, 0x00, 0x00, 0x00, 0x08, 0x00, 0x01, 0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, orientation, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+  const body = Buffer.concat([Buffer.from("Exif\0\0", "latin1"), tiff]);
+  const header = Buffer.from([0xff, 0xe1, (body.length + 2) >> 8, (body.length + 2) & 0xff]);
+  return Buffer.concat([jpeg.subarray(0, 2), header, body, jpeg.subarray(2)]);
+}
+try {
+  const images = join(fixtures, "images");
+  rmSync(images, { recursive: true, force: true });
+  mkdirSync(images, { recursive: true });
+  const src = join(fixtures, "showcase-invoice.pdf");
+  const jpegFrom = (name, opts) => {
+    execFileSync("pdftoppm", ["-jpeg", "-r", "30", "-singlefile", ...opts, src, join(images, name)]);
+    return join(images, `${name}.jpg`);
+  };
+  const photo = jpegFrom("photo", []);
+  jpegFrom("progressive", ["-jpegopt", "progressive=y"]);
+  writeFileSync(join(images, "photo-exif-6.jpg"), withExifOrientation(readFileSync(photo), 6));
+  writeFileSync(join(images, "logo.png"), makePng(120, 80));
+  writeFileSync(join(images, "not-an-image.jpg"), "this is not an image");
+} catch (error) {
+  console.warn("Skipped image fixtures (Poppler's pdftoppm not available):", error.message);
 }
 
 console.log(`Fixtures written to ${fixtures}`);

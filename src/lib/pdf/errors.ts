@@ -6,6 +6,9 @@ export type PdfErrorCode =
   | "too-large"
   | "empty"
   | "export-failed"
+  | "encrypted"
+  | "invalid-input"
+  | "unsupported-image"
   | "unknown";
 
 export class PdfUserError extends Error {

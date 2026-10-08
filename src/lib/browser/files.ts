@@ -23,8 +23,8 @@ export function loadBundledFont(file: string): Promise<Uint8Array> {
   return pending;
 }
 
-export function downloadBytes(bytes: Uint8Array, fileName: string): void {
-  const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "application/pdf" });
+export function downloadBytes(bytes: Uint8Array, fileName: string, mimeType = "application/pdf"): void {
+  const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

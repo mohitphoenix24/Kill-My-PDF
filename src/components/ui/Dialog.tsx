@@ -28,17 +28,17 @@ export function Dialog({ open, title, description, onClose, children, footer, wi
       ref={ref}
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
-      className={`m-auto w-[calc(100vw-2rem)] ${width} rounded-2xl bg-zinc-900 p-0 text-zinc-100 shadow-2xl shadow-black/60 ring-1 ring-white/10 backdrop:bg-black/60 backdrop:backdrop-blur-sm open:animate-dialog-in`}
+      className={`m-auto w-[calc(100vw-2rem)] ${width} rounded-2xl bg-ink-900 p-0 text-ink-100 shadow-2xl shadow-black/60 ring-1 ring-white/10 backdrop:bg-black/60 backdrop:backdrop-blur-sm open:animate-dialog-in`}
     >
       <div className="p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold text-white">{title}</h2>
-            {description && <p className="mt-1.5 text-sm leading-relaxed text-zinc-400">{description}</p>}
+            {description && <p className="mt-1.5 text-sm leading-relaxed text-ink-400">{description}</p>}
           </div>
           <button
             onClick={onClose}
-            className="-mr-2 -mt-1 rounded-lg p-1.5 text-zinc-500 outline-none hover:bg-white/10 hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+            className="-mr-2 -mt-1 rounded-lg p-1.5 text-ink-500 outline-none hover:bg-white/10 hover:text-ink-200 focus-visible:ring-2 focus-visible:ring-volt-400/60"
             aria-label="Close"
           >
             <X className="size-4" />

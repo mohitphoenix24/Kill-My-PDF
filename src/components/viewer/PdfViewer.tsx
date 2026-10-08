@@ -4,7 +4,12 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { EditOperation } from "@/lib/editor/operations";
 import type { DocumentModel } from "@/lib/model/types";
 import type { PDFDocumentProxy } from "@/lib/pdf/pdfjs/pdfjs";
+import type { TapAnchor } from "./ElementOverlay";
 import { PageView, type Tool } from "./PageView";
+
+/** Pinch-to-zoom limits, matching the toolbar's zoom steps. */
+const MIN_SCALE = 0.25;
+const MAX_SCALE = 4;
 
 export interface ScrollRequest {
   pageNumber: number;
@@ -21,12 +26,15 @@ interface Props {
   tool: Tool;
   selectedId: string | null;
   editingId: string | null;
+  editOnPage: boolean;
+  anchor: TapAnchor | null;
   widths: ReadonlyMap<string, number>;
   scrollRequest: ScrollRequest | null;
-  onSelect: (id: string | null) => void;
+  onSelect: (id: string | null, fraction?: number) => void;
   onMove: (id: string, dx: number, dy: number) => void;
   onEdit: (op: EditOperation) => void;
-  onEditRequest: (id: string) => void;
+  onEditRequest: (id: string, fraction?: number) => void;
+  onZoomTo: (scale: number) => void;
   onStopEditing: () => void;
   onShowDetails: () => void;
   onPageVisible: (pageNumber: number) => void;
@@ -101,17 +109,95 @@ export function PdfViewer(props: Props) {
     return () => observer.disconnect();
   }, [onViewportWidth]);
 
-  // Keep the same relative scroll position when zooming.
+  // After a zoom change: a pinch keeps the spot under the fingers fixed; other zooms keep the relative scroll position.
   const lastScale = useRef(scale);
+  const pinchAnchor = useRef<{ contentX: number; contentY: number; midX: number; midY: number; factor: number } | null>(null);
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el || lastScale.current === scale) return;
-    const ratio = el.scrollTop / Math.max(1, el.scrollHeight);
     lastScale.current = scale;
+    const pinch = pinchAnchor.current;
+    pinchAnchor.current = null;
+    if (pinch) {
+      el.scrollLeft = pinch.contentX * pinch.factor - pinch.midX;
+      el.scrollTop = pinch.contentY * pinch.factor - pinch.midY;
+      return;
+    }
+    const ratio = el.scrollTop / Math.max(1, el.scrollHeight);
     requestAnimationFrame(() => {
       el.scrollTop = ratio * el.scrollHeight;
     });
   }, [scale]);
+
+  // Two-finger pinch: scale the pages live with a CSS transform, then commit the new zoom on release.
+  const contentRef = useRef<HTMLDivElement>(null);
+  const liveScale = useRef(scale);
+  const zoomTo = useRef(props.onZoomTo);
+  useEffect(() => {
+    liveScale.current = scale;
+    zoomTo.current = props.onZoomTo;
+  });
+  useEffect(() => {
+    const el = scrollRef.current;
+    const content = contentRef.current;
+    if (!el || !content) return;
+    let start: { dist: number; scale: number; midX: number; midY: number } | null = null;
+    let factor = 1;
+    const distance = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const reset = () => {
+      content.style.transform = "";
+      content.style.transformOrigin = "";
+      content.style.willChange = "";
+    };
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      const rect = el.getBoundingClientRect();
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+      start = { dist: distance(e.touches), scale: liveScale.current, midX, midY };
+      factor = 1;
+      content.style.transformOrigin = `${el.scrollLeft + midX}px ${el.scrollTop + midY}px`;
+      content.style.willChange = "transform";
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!start || e.touches.length !== 2) return;
+      factor = Math.min(MAX_SCALE / start.scale, Math.max(MIN_SCALE / start.scale, distance(e.touches) / start.dist));
+      content.style.transform = `scale(${factor})`;
+      e.preventDefault();
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (!start || e.touches.length >= 2) return;
+      const gesture = start;
+      start = null;
+      reset();
+      if (Math.abs(factor - 1) < 0.02) return;
+      pinchAnchor.current = { contentX: el.scrollLeft + gesture.midX, contentY: el.scrollTop + gesture.midY, midX: gesture.midX, midY: gesture.midY, factor };
+      zoomTo.current(gesture.scale * factor);
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd);
+    el.addEventListener("touchcancel", onEnd);
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+      reset();
+    };
+  }, []);
+
+  // While typing on a touch screen, bring the line being edited near the top, clear of the keyboard.
+  const typingElementId = !props.editOnPage ? props.editingId : null;
+  useEffect(() => {
+    if (!typingElementId) return;
+    const reveal = () =>
+      scrollRef.current
+        ?.querySelector(`[data-element-id="${typingElementId}"]`)
+        ?.scrollIntoView({ block: "start", behavior: "smooth" });
+    const timers = [requestAnimationFrame(reveal) as unknown as number, window.setTimeout(reveal, 400)];
+    return () => timers.forEach((t) => clearTimeout(t));
+  }, [typingElementId]);
 
   useEffect(() => {
     if (!scrollRequest) return;
@@ -129,8 +215,15 @@ export function PdfViewer(props: Props) {
   }, []);
 
   return (
-    <div ref={scrollRef} className="thin-scroll canvas-backdrop h-full overflow-auto" data-testid="viewer">
-      <div className="flex min-w-fit flex-col gap-4 px-3 pb-28 pt-4 sm:gap-6 sm:px-6 sm:pt-6">
+    <div
+      ref={scrollRef}
+      className="thin-scroll canvas-backdrop h-full overflow-auto"
+      style={{ touchAction: "pan-x pan-y" }}
+      data-testid="viewer"
+      // Tapping the desk around the pages deselects, like any editor.
+      onClick={(e) => (e.target === e.currentTarget || e.target === contentRef.current) && props.onSelect(null)}
+    >
+      <div ref={contentRef} className={`flex min-w-fit flex-col gap-4 px-3 pt-4 sm:gap-6 sm:px-6 sm:pt-6 ${typingElementId ? "pb-[60dvh]" : "pb-28"}`}>
         {model.pages.map((page) => {
           const onThisPage = (id: string | null) => (id?.startsWith(`p${page.pageNumber}-`) ? id : null);
           return (
@@ -145,6 +238,8 @@ export function PdfViewer(props: Props) {
               visible={visible.has(page.pageNumber)}
               selectedId={onThisPage(props.selectedId)}
               editingId={onThisPage(props.editingId)}
+              editOnPage={props.editOnPage}
+              anchor={props.anchor && onThisPage(props.anchor.id) ? props.anchor : null}
               widths={props.widths}
               onSelect={props.onSelect}
               onMove={props.onMove}

@@ -40,10 +40,10 @@ export function ShortcutsDialog({ open, modKey, onClose }: { open: boolean; modK
       <div className="grid gap-5 sm:grid-cols-2">
         {groups.map(([title, items]) => (
           <div key={title} className={title === "Editing" ? "sm:row-span-2" : ""}>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">{title}</h3>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-500">{title}</h3>
             <ul className="space-y-2">
               {items.map(([label, keys]) => (
-                <li key={label} className="flex items-center justify-between gap-3 text-[13px] text-zinc-300">
+                <li key={label} className="flex items-center justify-between gap-3 text-[13px] text-ink-300">
                   <span>{label}</span>
                   <span className="flex shrink-0 gap-1">
                     {keys.map((k) => (

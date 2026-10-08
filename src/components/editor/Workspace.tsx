@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileUp, TriangleAlert } from "lucide-react";
-import { Landing } from "@/components/landing/Landing";
+import { useRouter } from "next/navigation";
+import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import type { Toast } from "@/components/ui/Toaster";
@@ -10,6 +11,7 @@ import { useMediaQuery } from "@/components/ui/useMediaQuery";
 import { PdfViewer, type ScrollRequest } from "@/components/viewer/PdfViewer";
 import type { Tool } from "@/components/viewer/PageView";
 import { canEditInline } from "@/components/viewer/InlineTextEditor";
+import type { TapAnchor } from "@/components/viewer/ElementOverlay";
 import { createPageTransform } from "@/lib/geometry/coordinates";
 import { downloadBytes, editedFileName, loadBundledFont, readFileBytes } from "@/lib/browser/files";
 import { EMPTY_HISTORY, type EditHistory, appliedOps, canRedo, canUndo, record, redo, undo } from "@/lib/editor/history";
@@ -19,6 +21,7 @@ import { verifyExport } from "@/lib/pdf/export/verify";
 import { userMessageOf } from "@/lib/pdf/errors";
 import { SCANNED_PDF_MESSAGE } from "@/lib/pdf/session";
 import { Inspector } from "./Inspector";
+import { MobileEditBar } from "./MobileEditBar";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { ThumbnailRail } from "./ThumbnailRail";
 import { TopBar } from "./TopBar";
@@ -56,10 +59,14 @@ const MOD_KEY = isMac ? "⌘" : "Ctrl+";
 export default function Workspace({ file, toast, onExit }: Props) {
   const { state, open, close, ensureAnalyzed } = useDocument();
   const wide = useMediaQuery(WIDE_SCREEN);
+  /** Touch screens type into a docked bar instead of a field on the page. */
+  const touch = useMediaQuery("(pointer: coarse)");
   const [history, setHistory] = useState<EditHistory>(EMPTY_HISTORY);
   const [savedHistory, setSavedHistory] = useState<EditHistory>(EMPTY_HISTORY);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  /** The word the last tap landed on; the editor starts with it selected. */
+  const [anchor, setAnchor] = useState<TapAnchor | null>(null);
   const [tool, setTool] = useState<Tool>("edit");
   const [zoom, setZoom] = useState<"fit" | number>("fit");
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -82,11 +89,27 @@ export default function Workspace({ file, toast, onExit }: Props) {
     modelRef.current = model;
   }, [model]);
 
+  // First time on a touch screen: explain the two-tap gesture once.
+  const hinted = useRef(false);
+  const hasDoc = !!model;
+  useEffect(() => {
+    if (!touch || !hasDoc || hinted.current) return;
+    hinted.current = true;
+    try {
+      if (localStorage.getItem("kmp:touch-hint") === "1") return;
+      localStorage.setItem("kmp:touch-hint", "1");
+    } catch {
+      // Private mode etc.: show the hint every time rather than never.
+    }
+    toast({ tone: "info", title: "Tap a word to select its line", description: "Tap it again to edit — the word you tapped is picked for you. Pinch to zoom." });
+  }, [touch, hasDoc, toast]);
+
   const changed = useMemo(() => (model ? changedElements(model) : []), [model]);
   const editCount = changed.length;
   const editedPages = useMemo(() => new Set(changed.map((e) => e.pageNumber)), [changed]);
   const dirty = editCount > 0 && (savedHistory.ops !== history.ops || savedHistory.cursor !== history.cursor);
   const selected = model && selectedId ? (findTextElement(model, selectedId) ?? null) : null;
+  const editingElement = model && editingId ? (findTextElement(model, editingId) ?? null) : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -121,15 +144,12 @@ export default function Workspace({ file, toast, onExit }: Props) {
     [open, resetEditorState],
   );
 
-  const ignoreNextPop = useRef(false);
+  const router = useRouter();
+  /** The logo: leave for the site's home page. */
   const goHome = useCallback(() => {
     close();
-    if ((window.history.state as typeof EDITOR_HISTORY_STATE | null)?.view === "editor") {
-      ignoreNextPop.current = true;
-      window.history.back();
-    }
-    onExit();
-  }, [close, onExit]);
+    router.push("/");
+  }, [close, router]);
 
   const requestOpen = useCallback(
     (file: File) => {
@@ -170,10 +190,6 @@ export default function Workspace({ file, toast, onExit }: Props) {
   });
   useEffect(() => {
     const onPop = () => {
-      if (ignoreNextPop.current) {
-        ignoreNextPop.current = false;
-        return;
-      }
       const nav = navRef.current;
       if (!nav.hasDoc) return;
       if (nav.dirty) {
@@ -241,26 +257,29 @@ export default function Workspace({ file, toast, onExit }: Props) {
     [applyEdit],
   );
 
-  const select = useCallback((id: string | null) => {
+  const select = useCallback((id: string | null, fraction?: number) => {
     setSelectedId(id);
+    setAnchor(id !== null && fraction !== undefined ? { id, fraction } : null);
     setEditingId((editing) => (editing && editing !== id ? null : editing));
   }, []);
 
   const scaleRef = useRef(1);
   /** Double-click / Enter: type on the page when the text is horizontal, otherwise in the panel. */
-  const startEditing = useCallback((id: string) => {
+  const startEditing = useCallback((id: string, fraction?: number) => {
     const current = modelRef.current;
     const element = current && findTextElement(current, id);
     if (!current || !element || !element.editability.allowed) return;
     setSelectedId(id);
+    setAnchor(fraction !== undefined ? { id, fraction } : null);
     const page = current.pages[pageNumberOf(id) - 1];
-    if (canEditInline(element, createPageTransform(page, scaleRef.current))) {
+    // Touch screens always use the docked bar (it works for rotated text too); the mouse types on the page.
+    if (touch || canEditInline(element, createPageTransform(page, scaleRef.current))) {
       setEditingId(id);
     } else {
       setInspectorOpen(true);
       setFocusRequest((n) => n + 1);
     }
-  }, []);
+  }, [touch]);
   const stopEditing = useCallback(() => setEditingId(null), []);
   const showDetails = useCallback(() => setInspectorOpen(true), []);
 
@@ -315,6 +334,7 @@ export default function Workspace({ file, toast, onExit }: Props) {
     scaleRef.current = scale;
   }, [scale]);
 
+  const zoomTo = useCallback((next: number) => setZoom(Math.min(ZOOM_STEPS.at(-1)!, Math.max(ZOOM_STEPS[0], next))), []);
   const zoomIn = useCallback(() => setZoom(ZOOM_STEPS.find((s) => s > scale + 1e-6) ?? ZOOM_STEPS.at(-1)!), [scale]);
   const zoomOut = useCallback(() => setZoom([...ZOOM_STEPS].reverse().find((s) => s < scale - 1e-6) ?? ZOOM_STEPS[0]), [scale]);
   const fitWidth = useCallback(() => setZoom("fit"), []);
@@ -421,9 +441,9 @@ export default function Workspace({ file, toast, onExit }: Props) {
       />
 
       {!session || !model ? (
-        <Landing loadingFile={file.name} dragging={false} onOpen={() => {}} />
+        <LoadingScreen label={`Opening ${file.name}…`} />
       ) : (
-        <div className="flex h-dvh flex-col bg-zinc-950">
+        <div className="flex h-dvh flex-col bg-ink-950">
           <TopBar
             fileName={model.fileName}
             pageCount={model.pageCount}
@@ -449,6 +469,21 @@ export default function Workspace({ file, toast, onExit }: Props) {
             onToggleInspector={() => setInspectorOpen((o) => !o)}
           />
 
+          {touch && editingElement && (
+            <MobileEditBar
+              key={editingElement.id}
+              element={editingElement}
+              font={editingElement.fontKey ? model.fonts[editingElement.fontKey] : undefined}
+              anchor={anchor && anchor.id === editingElement.id ? anchor.fraction : null}
+              onChange={(text) => applyEdit({ type: "setText", elementId: editingElement.id, text })}
+              onDone={stopEditing}
+              onCancel={(initial) => {
+                if (initial !== editingElement.content) applyEdit({ type: "setText", elementId: editingElement.id, text: initial });
+                stopEditing();
+              }}
+            />
+          )}
+
           {(docNotice || preview.status === "error") && (
             <div role="alert" className="flex items-center gap-2.5 border-b border-amber-400/20 bg-amber-400/[0.08] px-4 py-2.5 text-sm text-amber-200">
               <TriangleAlert className="size-4 shrink-0 text-amber-400" />
@@ -458,7 +493,7 @@ export default function Workspace({ file, toast, onExit }: Props) {
 
           <div className="relative flex min-h-0 flex-1">
             {model.pageCount > 1 && (
-              <aside className="hidden w-[156px] shrink-0 border-r border-white/[0.07] bg-zinc-950 lg:block">
+              <aside className="hidden w-[156px] shrink-0 border-r border-white/[0.07] bg-ink-950 lg:block">
                 <ThumbnailRail
                   model={model}
                   originalDoc={session.pdfjs}
@@ -481,8 +516,11 @@ export default function Workspace({ file, toast, onExit }: Props) {
                 tool={tool}
                 selectedId={selectedId}
                 editingId={editingId}
+                editOnPage={!touch}
+                anchor={anchor}
                 widths={widths}
                 scrollRequest={scrollRequest}
+                onZoomTo={zoomTo}
                 onSelect={select}
                 onMove={handleMove}
                 onEdit={applyEdit}
@@ -515,12 +553,12 @@ export default function Workspace({ file, toast, onExit }: Props) {
                 aria-label="Properties"
                 className={
                   sheet
-                    ? "thin-scroll animate-sheet-in fixed inset-x-0 bottom-0 z-40 max-h-[72dvh] overflow-y-auto rounded-t-2xl border-t border-white/10 bg-zinc-950 pb-[env(safe-area-inset-bottom)] shadow-[0_-24px_60px_-12px_rgb(0_0_0/0.9)]"
-                    : "thin-scroll w-[320px] shrink-0 overflow-y-auto border-l border-white/[0.07] bg-zinc-950"
+                    ? "thin-scroll animate-sheet-in fixed inset-x-0 bottom-0 z-40 max-h-[72dvh] overflow-y-auto rounded-t-2xl border-t border-white/10 bg-ink-950 pb-[env(safe-area-inset-bottom)] shadow-[0_-24px_60px_-12px_rgb(0_0_0/0.9)]"
+                    : "thin-scroll w-[320px] shrink-0 overflow-y-auto border-l border-white/[0.07] bg-ink-950"
                 }
               >
                 {sheet && (
-                  <div className="flex justify-center bg-zinc-950 pt-2" aria-hidden>
+                  <div className="flex justify-center bg-ink-950 pt-2" aria-hidden>
                     <span className="h-1 w-10 rounded-full bg-white/20" />
                   </div>
                 )}
@@ -539,9 +577,9 @@ export default function Workspace({ file, toast, onExit }: Props) {
           </div>
 
           {dragging && (
-            <div className="animate-fade-in pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/70 backdrop-blur-sm">
-              <div className="flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-indigo-400/70 bg-zinc-900/90 px-14 py-11 shadow-2xl shadow-indigo-500/20">
-                <FileUp className="size-8 text-indigo-300" />
+            <div className="animate-fade-in pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-ink-950/70 backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-volt-400/70 bg-ink-900/90 px-14 py-11 shadow-2xl shadow-volt-500/20">
+                <FileUp className="size-8 text-volt-300" />
                 <p className="text-base font-medium text-white">Drop to open this PDF</p>
               </div>
             </div>
@@ -562,7 +600,7 @@ export default function Workspace({ file, toast, onExit }: Props) {
             <Button
               variant="primary"
               size="sm"
-              className="bg-red-500 shadow-[0_8px_24px_-8px_rgb(239_68_68/0.6)] hover:bg-red-400 active:bg-red-600"
+              className="bg-coral-500 shadow-[0_8px_24px_-8px_rgb(239_68_68/0.6)] hover:bg-coral-400 active:bg-coral-600"
               onClick={confirmPending}
             >
               {pending?.kind === "open" ? "Discard & open" : "Discard & leave"}

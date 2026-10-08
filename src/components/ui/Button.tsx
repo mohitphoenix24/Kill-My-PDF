@@ -5,11 +5,11 @@ type Size = "sm" | "md" | "lg";
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-indigo-500 text-white shadow-[0_0_0_1px_rgb(255_255_255/0.08)_inset,0_8px_24px_-8px_rgb(99_102_241/0.7)] hover:bg-indigo-400 active:bg-indigo-600 disabled:bg-indigo-500/30 disabled:text-white/40 disabled:shadow-none",
+    "bg-volt-400 font-semibold text-ink-950 shadow-[0_8px_24px_-10px_rgb(198_241_53/0.55)] hover:bg-volt-300 active:bg-volt-500 disabled:bg-white/[0.08] disabled:text-ink-500 disabled:shadow-none",
   secondary:
-    "bg-white/[0.06] text-zinc-100 ring-1 ring-inset ring-white/10 hover:bg-white/10 active:bg-white/[0.14] disabled:text-zinc-500 disabled:hover:bg-white/[0.06]",
-  ghost: "text-zinc-300 hover:bg-white/[0.07] hover:text-white active:bg-white/10 disabled:text-zinc-600 disabled:hover:bg-transparent",
-  danger: "text-red-400 hover:bg-red-500/10 active:bg-red-500/15 disabled:text-red-400/40",
+    "bg-white/[0.06] text-ink-100 ring-1 ring-inset ring-white/10 hover:bg-white/10 active:bg-white/[0.14] disabled:text-ink-500 disabled:hover:bg-white/[0.06]",
+  ghost: "text-ink-300 hover:bg-white/[0.07] hover:text-white active:bg-white/10 disabled:text-ink-600 disabled:hover:bg-transparent",
+  danger: "text-coral-400 hover:bg-coral-500/10 active:bg-coral-500/15 disabled:text-coral-400/40",
 };
 
 const sizes: Record<Size, string> = {
@@ -30,7 +30,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   return (
     <button
       ref={ref}
-      className={`inline-flex shrink-0 items-center justify-center rounded-lg font-medium transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400 disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-lg font-medium transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-volt-400 disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
       {...props}
     />
   );
@@ -50,14 +50,14 @@ export function IconButton({ label, shortcut, active, tooltipSide = "bottom", cl
     <span className="group/tip relative inline-flex">
       <button
         aria-label={label}
-        className={`inline-flex size-9 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/[0.08] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-400 disabled:cursor-not-allowed disabled:text-zinc-700 disabled:hover:bg-transparent sm:size-8 ${active ? "bg-white/10 text-white" : ""} ${className}`}
+        className={`inline-flex size-8 items-center justify-center rounded-lg text-ink-400 transition-colors hover:bg-white/[0.08] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-volt-400 disabled:cursor-not-allowed disabled:text-ink-700 disabled:hover:bg-transparent pointer-coarse:size-11 ${active ? "bg-white/10 text-white" : ""} ${className}`}
         {...props}
       >
         {children}
       </button>
       <Tooltip side={tooltipSide}>
         {label}
-        {shortcut && <kbd className="ml-1.5 font-sans text-zinc-500">{shortcut}</kbd>}
+        {shortcut && <kbd className="ml-1.5 font-sans text-ink-500">{shortcut}</kbd>}
       </Tooltip>
     </span>
   );
@@ -67,7 +67,7 @@ export function Tooltip({ children, side = "bottom" }: { children: React.ReactNo
   return (
     <span
       role="tooltip"
-      className={`pointer-events-none absolute left-1/2 z-50 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-zinc-800 px-2 py-1 text-xs font-medium text-zinc-100 opacity-0 shadow-lg ring-1 ring-white/10 transition-opacity group-hover/tip:opacity-100 group-hover/tip:delay-300 [@media(hover:hover)]:block ${side === "bottom" ? "top-full mt-1.5" : "bottom-full mb-1.5"}`}
+      className={`pointer-events-none absolute left-1/2 z-50 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-ink-800 px-2 py-1 text-xs font-medium text-ink-100 opacity-0 shadow-lg ring-1 ring-white/10 transition-opacity group-hover/tip:opacity-100 group-hover/tip:delay-300 [@media(hover:hover)]:block ${side === "bottom" ? "top-full mt-1.5" : "bottom-full mb-1.5"}`}
     >
       {children}
     </span>
@@ -76,7 +76,7 @@ export function Tooltip({ children, side = "bottom" }: { children: React.ReactNo
 
 export function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border border-white/10 bg-white/[0.06] px-1 font-sans text-[11px] font-medium text-zinc-300">
+    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border border-white/10 bg-white/[0.06] px-1 font-sans text-[11px] font-medium text-ink-300">
       {children}
     </kbd>
   );

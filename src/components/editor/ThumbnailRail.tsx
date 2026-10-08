@@ -66,16 +66,16 @@ function ThumbnailRailImpl({ model, originalDoc, previewDoc, previewPages, edite
               >
                 <span
                   className={`relative block overflow-hidden rounded-md bg-white shadow-lg shadow-black/40 transition-all ${
-                    active ? "ring-2 ring-indigo-400 ring-offset-2 ring-offset-zinc-950" : "opacity-80 ring-1 ring-white/10 group-hover:opacity-100 group-hover:ring-white/25"
+                    active ? "ring-2 ring-volt-400 ring-offset-2 ring-offset-ink-950" : "opacity-80 ring-1 ring-white/10 group-hover:opacity-100 group-hover:ring-white/25"
                   }`}
                   style={{ width: t.width, height: t.height }}
                 >
                   {visible.has(page.pageNumber) && <PageCanvas doc={doc} pageNumber={page.pageNumber} scale={scale} />}
                   {editedPages.has(page.pageNumber) && (
-                    <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-emerald-400 ring-2 ring-zinc-950" title="Edited" />
+                    <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-volt-400 ring-2 ring-ink-950" title="Edited" />
                   )}
                 </span>
-                <span className={`text-[11px] font-medium tabular-nums ${active ? "text-indigo-300" : "text-zinc-500"}`}>
+                <span className={`text-[11px] font-medium tabular-nums ${active ? "text-volt-300" : "text-ink-500"}`}>
                   {page.pageNumber}
                 </span>
               </button>

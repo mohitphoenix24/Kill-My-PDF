@@ -27,9 +27,9 @@ export function useToasts() {
 }
 
 const icons = {
-  success: <CircleCheck className="size-5 text-emerald-400" />,
-  error: <CircleAlert className="size-5 text-red-400" />,
-  info: <Info className="size-5 text-indigo-400" />,
+  success: <CircleCheck className="size-5 text-volt-400" />,
+  error: <CircleAlert className="size-5 text-coral-400" />,
+  info: <Info className="size-5 text-volt-400" />,
 };
 
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) => void }) {
@@ -40,16 +40,16 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number)
   return (
     <div
       role={toast.tone === "error" ? "alert" : "status"}
-      className="animate-toast-in pointer-events-auto flex w-full items-start gap-3 rounded-xl bg-zinc-900/95 p-3.5 shadow-2xl shadow-black/50 ring-1 ring-white/10 backdrop-blur sm:w-[380px]"
+      className="animate-toast-in pointer-events-auto flex w-full items-start gap-3 rounded-xl bg-ink-900/95 p-3.5 shadow-2xl shadow-black/50 ring-1 ring-white/10 backdrop-blur sm:w-[380px]"
     >
       <span className="mt-px">{icons[toast.tone]}</span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-zinc-100">{toast.title}</p>
-        {toast.description && <p className="mt-0.5 text-[13px] leading-snug text-zinc-400">{toast.description}</p>}
+        <p className="text-sm font-medium text-ink-100">{toast.title}</p>
+        {toast.description && <p className="mt-0.5 text-[13px] leading-snug text-ink-400">{toast.description}</p>}
       </div>
       <button
         onClick={() => onDismiss(toast.id)}
-        className="rounded-md p-0.5 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
+        className="rounded-md p-0.5 text-ink-500 hover:bg-white/10 hover:text-ink-200"
         aria-label="Dismiss"
       >
         <X className="size-4" />
